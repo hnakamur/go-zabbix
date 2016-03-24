@@ -8,7 +8,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 )
@@ -107,6 +106,22 @@ func decodeResponse(r io.Reader, result interface{}) (*rpcResponse, error) {
 	return res, nil
 }
 
+type rpcCountResponse struct {
+	Jsonrpc string `json:"jsonrpc"`
+	Error   *Error `json:"error"`
+	Result  int64  `json:"result,string"`
+	ID      uint64 `json:"id"`
+}
+
+func decodeCountResponse(r io.Reader) (*rpcCountResponse, error) {
+	res := new(rpcCountResponse)
+	err := json.NewDecoder(r).Decode(res)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
 func (c *Client) Login(user, password string) error {
 	params := struct {
 		User     string `json:"user"`
@@ -135,15 +150,21 @@ func (c *Client) Login(user, password string) error {
 	return nil
 }
 
-func (c *Client) Call(method string, params interface{}, result interface{}) error {
-	req := c.newRPCRequest(method, params)
+type responseCommon struct {
+	Jsonrpc string `json:"jsonrpc"`
+	Error   *Error `json:"error"`
+	ID      uint64 `json:"id"`
+}
+
+func (c *Client) internalCall(method string, params interface{}, result interface{}) (req *rpcRequest, err error) {
+	req = c.newRPCRequest(method, params)
 	httpReq, err := c.newHTTPRequest(req)
 	if err != nil {
-		return err
+		return
 	}
 	httpRes, err := c.client.Do(httpReq)
 	if err != nil {
-		return err
+		return
 	}
 	defer httpRes.Body.Close()
 
@@ -155,16 +176,29 @@ func (c *Client) Call(method string, params interface{}, result interface{}) err
 	} else {
 		reader = httpRes.Body
 	}
-	res, err := decodeResponse(reader, result)
+	err = json.NewDecoder(reader).Decode(result)
 	if err != nil {
-		return err
+		return
 	}
 	if c.Logger != nil {
 		c.Logger.Printf("response:%s", buf.String())
 	}
-	if err := res.Error; err != nil {
-		err.Method = method
+	return
+}
+
+func (c *Client) Call(method string, params interface{}, result interface{}) error {
+	var res struct {
+		responseCommon
+		Result interface{} `json:"result,string"`
+	}
+	res.Result = result
+	req, err := c.internalCall(method, params, &res)
+	if err != nil {
 		return err
+	}
+	if res.Error != nil {
+		res.Error.Method = method
+		return res.Error
 	}
 	if res.ID != req.ID {
 		return fmt.Errorf("response ID (%d) does not match resquest ID (%d)", res.ID, req.ID)
@@ -173,10 +207,20 @@ func (c *Client) Call(method string, params interface{}, result interface{}) err
 }
 
 func (c *Client) CallForCount(method string, params interface{}) (int64, error) {
-	var value string
-	err := c.Call(method, params, &value)
+	var res struct {
+		responseCommon
+		Result int64 `json:"result,string"`
+	}
+	req, err := c.internalCall(method, params, &res)
 	if err != nil {
 		return 0, err
 	}
-	return strconv.ParseInt(value, 10, 64)
+	if res.Error != nil {
+		res.Error.Method = method
+		return 0, res.Error
+	}
+	if res.ID != req.ID {
+		return 0, fmt.Errorf("response ID (%d) does not match resquest ID (%d)", res.ID, req.ID)
+	}
+	return res.Result, nil
 }

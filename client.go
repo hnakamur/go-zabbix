@@ -172,23 +172,11 @@ func (c *Client) Call(method string, params interface{}, result interface{}) err
 	return nil
 }
 
-func (c *Client) CallForCount(method string, params map[string]interface{}) (int64, error) {
-	if params["countOutput"] != true {
-		params = shallowCopyParams(params)
-		params["countOutput"] = true
-	}
+func (c *Client) CallForCount(method string, params interface{}) (int64, error) {
 	var value string
 	err := c.Call(method, params, &value)
 	if err != nil {
 		return 0, err
 	}
 	return strconv.ParseInt(value, 10, 64)
-}
-
-func shallowCopyParams(src map[string]interface{}) map[string]interface{} {
-	dest := make(map[string]interface{})
-	for k, v := range src {
-		dest[k] = v
-	}
-	return dest
 }

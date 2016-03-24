@@ -9,12 +9,27 @@ import (
 	"github.com/hnakamur/go-zabbix"
 )
 
+func getHostCount(client *zabbix.Client) (int64, error) {
+	params := struct {
+		CountOutput bool `json:"countOutput"`
+	}{
+		CountOutput: true,
+	}
+	return client.CallForCount("host.get", params)
+}
+
 func getHostID(client *zabbix.Client, hostname string) (string, error) {
-	params := map[string]interface{}{
-		"filter": map[string]interface{}{
-			"host": hostname,
+	type filter struct {
+		Host string `json:"host"`
+	}
+	params := struct {
+		Filter filter   `json:"filter"`
+		Output []string `json:"output"`
+	}{
+		Filter: filter{
+			Host: hostname,
 		},
-		"output": []string{"hostid"},
+		Output: []string{"hostid"},
 	}
 
 	var hosts []struct {
@@ -31,13 +46,18 @@ func getHostID(client *zabbix.Client, hostname string) (string, error) {
 }
 
 func getItemID(client *zabbix.Client, itemKey string) (string, error) {
-	params := map[string]interface{}{
-		"search": map[string]interface{}{
-			"key_": itemKey,
-		},
-		"output": []string{"itemid"},
+	type search struct {
+		Key string `json:"key_"`
 	}
-
+	params := struct {
+		Search search   `json:"search"`
+		Output []string `json:"output"`
+	}{
+		Search: search{
+			Key: itemKey,
+		},
+		Output: []string{"itemid"},
+	}
 	var items []struct {
 		ItemID string `json:"itemid"`
 	}
@@ -60,6 +80,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	count, err := getHostCount(client)
+	if err != nil {
+		logger.Fatal(err)
+	}
+	logger.Printf("host count=%d", count)
 
 	hostID, err := getHostID(client, "xxxxx.example.com")
 	if err != nil {

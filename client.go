@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -20,20 +19,21 @@ const loginMethod = "user.login"
 type Client struct {
 	client      http.Client
 	endpointURL string
-	Logger      *log.Logger
+	logger      Logger
 
 	mu        sync.Mutex
 	requestID uint64
 	auth      string
 }
 
-func NewClient(zabbixURL string) *Client {
+func NewClient(zabbixURL string, logger Logger) *Client {
 	client := new(Client)
 	if strings.HasSuffix(zabbixURL, "/") {
 		client.endpointURL = zabbixURL + jsonrpcEndpoint
 	} else {
 		client.endpointURL = zabbixURL + "/" + jsonrpcEndpoint
 	}
+	client.logger = logger
 	return client
 }
 
@@ -67,8 +67,8 @@ func (c *Client) newHTTPRequest(r *rpcRequest) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
-	if c.Logger != nil {
-		c.Logger.Printf("request:%s", string(b))
+	if c.logger != nil {
+		c.logger.Log("request:" + string(b))
 	}
 	req, err := http.NewRequest(http.MethodPost, c.endpointURL, bytes.NewReader(b))
 	if err != nil {
@@ -170,7 +170,7 @@ func (c *Client) internalCall(method string, params interface{}, result interfac
 
 	var buf *bytes.Buffer
 	var reader io.Reader
-	if c.Logger != nil {
+	if c.logger != nil {
 		buf = bytes.NewBuffer(make([]byte, 4096))
 		reader = io.TeeReader(httpRes.Body, buf)
 	} else {
@@ -180,8 +180,8 @@ func (c *Client) internalCall(method string, params interface{}, result interfac
 	if err != nil {
 		return
 	}
-	if c.Logger != nil {
-		c.Logger.Printf("response:%s", buf.String())
+	if c.logger != nil {
+		c.logger.Log("response:" + buf.String())
 	}
 	return
 }

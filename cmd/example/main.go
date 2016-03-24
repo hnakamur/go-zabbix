@@ -71,14 +71,21 @@ func getItemID(client *zabbix.Client, itemKey string) (string, error) {
 	return items[0].ItemID, nil
 }
 
-func main() {
-	logger := log.New(os.Stdout, "", log.LstdFlags|log.Lmicroseconds)
+type myLogger struct {
+	*log.Logger
+}
 
-	client := zabbix.NewClient("http://localhost/zabbix")
-	client.Logger = logger
+func (l myLogger) Log(v interface{}) {
+	l.Print(v)
+}
+
+func main() {
+	logger := myLogger{log.New(os.Stdout, "", log.LstdFlags|log.Lmicroseconds)}
+
+	client := zabbix.NewClient("http://localhost/zabbix", logger)
 	err := client.Login("Admin", "zabbix")
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 
 	count, err := getHostCount(client)

@@ -115,9 +115,11 @@ func getHostID(client *zabbix.Client, hostGroupID, hostname string) (hostID stri
 		Host string `json:"host"`
 	}
 	params := struct {
-		Filter filter   `json:"filter"`
-		Output []string `json:"output"`
+		GroupIDs string   `json:"groupids"`
+		Filter   filter   `json:"filter"`
+		Output   []string `json:"output"`
 	}{
+		GroupIDs: hostGroupID,
 		Filter: filter{
 			Host: hostname,
 		},

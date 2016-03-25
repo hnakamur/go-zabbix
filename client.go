@@ -128,7 +128,7 @@ type responseCommon struct {
 	ID      uint64 `json:"id"`
 }
 
-func (c *Client) internalCall(method string, params interface{}, result interface{}) (req *rpcRequest, err error) {
+func (c *Client) internalCall(method string, params, result interface{}) (req *rpcRequest, err error) {
 	req = c.newRPCRequest(method, params)
 	httpReq, err := c.newHTTPRequest(req)
 	if err != nil {
@@ -158,7 +158,7 @@ func (c *Client) internalCall(method string, params interface{}, result interfac
 	return
 }
 
-func (c *Client) Call(method string, params interface{}, result interface{}) error {
+func (c *Client) Call(method string, params, result interface{}) error {
 	var res struct {
 		responseCommon
 		Result interface{} `json:"result,string"`

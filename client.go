@@ -18,6 +18,7 @@ const loginMethod = "user.login"
 
 type Client struct {
 	client      http.Client
+	host        string
 	endpointURL string
 	logger      Logger
 
@@ -26,13 +27,14 @@ type Client struct {
 	auth      string
 }
 
-func NewClient(zabbixURL string, logger Logger) *Client {
+func NewClient(zabbixURL, zabbixHost string, logger Logger) *Client {
 	client := new(Client)
 	if strings.HasSuffix(zabbixURL, "/") {
 		client.endpointURL = zabbixURL + jsonrpcEndpoint
 	} else {
 		client.endpointURL = zabbixURL + "/" + jsonrpcEndpoint
 	}
+	client.host = zabbixHost
 	client.logger = logger
 	return client
 }
@@ -73,6 +75,9 @@ func (c *Client) newHTTPRequest(r *rpcRequest) (*http.Request, error) {
 	req, err := http.NewRequest(http.MethodPost, c.endpointURL, bytes.NewReader(b))
 	if err != nil {
 		return nil, err
+	}
+	if c.host != "" {
+		req.Host = c.host
 	}
 	req.Header.Set("Content-Type", contentType)
 	return req, nil

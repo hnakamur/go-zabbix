@@ -82,7 +82,7 @@ func (l myLogger) Log(v interface{}) {
 func main() {
 	logger := myLogger{log.New(os.Stdout, "", log.LstdFlags|log.Lmicroseconds)}
 
-	client := zabbix.NewClient("http://localhost/zabbix", logger)
+	client := zabbix.NewClient("http://localhost/zabbix", "", logger)
 	err := client.Login("Admin", "zabbix")
 	if err != nil {
 		logger.Fatal(err)

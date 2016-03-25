@@ -94,39 +94,6 @@ func (e Error) Error() string {
 	return fmt.Sprintf("%s method=%s, code=%d, data=%s", e.Message, e.Method, e.Code, e.Data)
 }
 
-type rpcResponse struct {
-	Jsonrpc string      `json:"jsonrpc"`
-	Error   *Error      `json:"error"`
-	Result  interface{} `json:"result,string"`
-	ID      uint64      `json:"id"`
-}
-
-func decodeResponse(r io.Reader, result interface{}) (*rpcResponse, error) {
-	res := new(rpcResponse)
-	res.Result = result
-	err := json.NewDecoder(r).Decode(res)
-	if err != nil {
-		return nil, err
-	}
-	return res, nil
-}
-
-type rpcCountResponse struct {
-	Jsonrpc string `json:"jsonrpc"`
-	Error   *Error `json:"error"`
-	Result  int64  `json:"result,string"`
-	ID      uint64 `json:"id"`
-}
-
-func decodeCountResponse(r io.Reader) (*rpcCountResponse, error) {
-	res := new(rpcCountResponse)
-	err := json.NewDecoder(r).Decode(res)
-	if err != nil {
-		return nil, err
-	}
-	return res, nil
-}
-
 func (c *Client) Login(user, password string) error {
 	params := struct {
 		User     string `json:"user"`

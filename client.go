@@ -27,6 +27,11 @@ type Client struct {
 	auth      string
 }
 
+// NewClient creates a Zabbix API client. zabbixURL is the URL of the Zabbix server.
+// If you pass the value other than the empty string to zabbixHost, it is set to the
+// Host header of requests to the Zabbix server. For example, you can set zabbixURL
+// to "http://127.0.0.1" and zabbixHost to "zabbix.example.com" and use the virtualhost.
+// If you pass a non-nil value to logger, the debug logs are printed with that logger.
 func NewClient(zabbixURL, zabbixHost string, logger Logger) *Client {
 	client := new(Client)
 	if strings.HasSuffix(zabbixURL, "/") {
@@ -158,6 +163,9 @@ func (c *Client) internalCall(method string, params, result interface{}) (req *r
 	return
 }
 
+// Calls a Zabbix API and gets the result.
+// See https://github.com/hnakamur/go-zabbix/blob/46d9f81a6406cecd04ff2f9d41b29efb475a58e9/cmd/example/main.go#L113-L142
+// for an example.
 func (c *Client) Call(method string, params, result interface{}) error {
 	var res struct {
 		responseCommon
@@ -178,6 +186,9 @@ func (c *Client) Call(method string, params, result interface{}) error {
 	return nil
 }
 
+// Calls a Zabbix API and gets the integer result.
+// See https://github.com/hnakamur/go-zabbix/blob/46d9f81a6406cecd04ff2f9d41b29efb475a58e9/cmd/example/main.go#L16-L23
+// for an example.
 func (c *Client) CallForCount(method string, params interface{}) (int64, error) {
 	var res struct {
 		responseCommon

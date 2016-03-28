@@ -8,10 +8,12 @@ import (
 
 type Timestamp time.Time
 
+// MarshalJSON returns a string of seconds from the Unix Epoch time.
 func (t Timestamp) MarshalJSON() ([]byte, error) {
 	return []byte(`"` + strconv.FormatInt(time.Time(t).Unix(), 10) + `"`), nil
 }
 
+// UnmarshalJSON reads a string of seconds from the Unix Epoch time.
 func (t *Timestamp) UnmarshalJSON(data []byte) error {
 	s := strings.Trim(string(data), `"`)
 	ts, err := strconv.ParseInt(s, 10, 64)

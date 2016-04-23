@@ -257,7 +257,7 @@ func getHistories(client *zabbix.Client, params, histories interface{}) error {
 
 func sendItemData(zabbixServerAddr, hostname string, data map[string]interface{}, t time.Time, logger zabbix.Logger) error {
 	items := zabbix_sender.MakeDataItems(data, hostname)
-	for i, _ := range items {
+	for i := range items {
 		items[i].Timestamp = t.Unix()
 	}
 	addr, err := net.ResolveTCPAddr("tcp", zabbixServerAddr)

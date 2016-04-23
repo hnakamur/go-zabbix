@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+// Timestamp is an alias to time.Time. Timestamp is encoded a string whose value
+// is seconds from the Unix epoch time.
 type Timestamp time.Time
 
 // MarshalJSON returns a string of seconds from the Unix Epoch time.

@@ -1,4 +1,4 @@
-// A minimal Zabbix API client library.
+// Package zabbix is a minimal Zabbix API client library.
 //
 // This library is provides the only minimal lower level APIs.
 //

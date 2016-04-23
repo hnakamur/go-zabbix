@@ -16,6 +16,7 @@ const jsonrpcVersion = "2.0"
 const jsonrpcEndpoint = "api_jsonrpc.php"
 const loginMethod = "user.login"
 
+// Client represents a client for Zabbix API. NewClient() to create a Client.
 type Client struct {
 	client      http.Client
 	host        string
@@ -88,6 +89,7 @@ func (c *Client) newHTTPRequest(r *rpcRequest) (*http.Request, error) {
 	return req, nil
 }
 
+// Error represents an error from Zabbix API
 type Error struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
@@ -95,10 +97,12 @@ type Error struct {
 	Method  string `json:"-"`
 }
 
+// Returns a string for an error from Zabbix API
 func (e Error) Error() string {
 	return fmt.Sprintf("%s method=%s, code=%d, data=%s", e.Message, e.Method, e.Code, e.Data)
 }
 
+// Login to Zabbix API
 func (c *Client) Login(user, password string) error {
 	params := struct {
 		User     string `json:"user"`
@@ -117,7 +121,7 @@ func (c *Client) Login(user, password string) error {
 	if auth == "" {
 		// NOTE: When a error happens, rpcResponse.Error becomes non-null,
 		// so this should not happen.
-		return errors.New("user.login API should have return a valid (non-empty) auth.")
+		return errors.New("user.login API should have return a valid (non-empty) auth")
 	}
 
 	c.mu.Lock()
@@ -163,7 +167,7 @@ func (c *Client) internalCall(method string, params, result interface{}) (req *r
 	return
 }
 
-// Calls a Zabbix API and gets the result.
+// Call calls a Zabbix API and gets the result.
 // See https://github.com/hnakamur/go-zabbix/blob/46d9f81a6406cecd04ff2f9d41b29efb475a58e9/cmd/example/main.go#L113-L142
 // for an example.
 func (c *Client) Call(method string, params, result interface{}) error {
@@ -186,7 +190,7 @@ func (c *Client) Call(method string, params, result interface{}) error {
 	return nil
 }
 
-// Calls a Zabbix API and gets the integer result.
+// CallForCount calls a Zabbix API and gets the integer result.
 // See https://github.com/hnakamur/go-zabbix/blob/46d9f81a6406cecd04ff2f9d41b29efb475a58e9/cmd/example/main.go#L16-L23
 // for an example.
 func (c *Client) CallForCount(method string, params interface{}) (int64, error) {

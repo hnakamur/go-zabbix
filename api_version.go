@@ -9,16 +9,16 @@ import (
 )
 
 type APIVersion struct {
-	Major          int
-	Minor          int
-	Patch          int
-	PreReleaseType PreReleaseType
-	PreReleaseVer  int
+	Major      int
+	Minor      int
+	Patch      int
+	PreRelType PreRelType
+	PreRelVer  int
 }
 
 var ErrInvalidZabbixVer = errors.New("invalid Zabbix version")
 
-var zabbixVerRe = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)(?:(alpha|beta|rc)(\d+))?$`)
+var versionRegex = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)(?:(alpha|beta|rc)(\d+))?$`)
 
 func MustParseAPIVersion(ver string) APIVersion {
 	v, err := ParseAPIVersion(ver)
@@ -30,7 +30,7 @@ func MustParseAPIVersion(ver string) APIVersion {
 
 func ParseAPIVersion(ver string) (APIVersion, error) {
 	var v APIVersion
-	m := zabbixVerRe.FindStringSubmatch(ver)
+	m := versionRegex.FindStringSubmatch(ver)
 	if len(m) != 6 {
 		return v, ErrInvalidZabbixVer
 	}
@@ -56,18 +56,18 @@ func ParseAPIVersion(ver string) (APIVersion, error) {
 	if m[4] != "" {
 		switch m[4] {
 		case "alpha":
-			v.PreReleaseType = Alpha
+			v.PreRelType = Alpha
 		case "beta":
-			v.PreReleaseType = Beta
+			v.PreRelType = Beta
 		case "rc":
-			v.PreReleaseType = RC
+			v.PreRelType = RC
 		}
 
 		preReleaseVer, err := strconv.Atoi(m[5])
 		if err != nil {
 			return v, ErrInvalidZabbixVer
 		}
-		v.PreReleaseVer = preReleaseVer
+		v.PreRelVer = preReleaseVer
 	}
 	return v, nil
 }
@@ -75,8 +75,8 @@ func ParseAPIVersion(ver string) (APIVersion, error) {
 func (v APIVersion) String() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%d.%d.%d", v.Major, v.Minor, v.Patch)
-	if v.PreReleaseType != Release {
-		fmt.Fprintf(&b, "%s%d", v.PreReleaseType, v.PreReleaseVer)
+	if v.PreRelType != Release {
+		fmt.Fprintf(&b, "%s%d", v.PreRelType, v.PreRelVer)
 	}
 	return b.String()
 }
@@ -103,38 +103,33 @@ func (v APIVersion) Compare(w APIVersion) int {
 		return 1
 	}
 
-	if v.PreReleaseType < w.PreReleaseType {
+	if v.PreRelType < w.PreRelType {
 		return -1
 	}
-	if v.PreReleaseType > w.PreReleaseType {
+	if v.PreRelType > w.PreRelType {
 		return 1
 	}
 
-	if v.PreReleaseVer < w.PreReleaseVer {
+	if v.PreRelVer < w.PreRelVer {
 		return -1
 	}
-	if v.PreReleaseVer > w.PreReleaseVer {
+	if v.PreRelVer > w.PreRelVer {
 		return 1
 	}
 
 	return 0
 }
 
-func (v APIVersion) IsZero() bool {
-	return v.Major == 0 && v.Minor == 0 && v.Patch == 0 &&
-		v.PreReleaseType == Release && v.PreReleaseVer == 0
-}
-
-type PreReleaseType int
+type PreRelType int
 
 const (
-	Alpha PreReleaseType = iota - 3
+	Alpha PreRelType = iota - 3
 	Beta
 	RC // Release Candidate
 	Release
 )
 
-func (t PreReleaseType) String() string {
+func (t PreRelType) String() string {
 	switch t {
 	case Alpha:
 		return "alpha"

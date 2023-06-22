@@ -9,23 +9,26 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sync"
 	"sync/atomic"
 )
 
 const contentType = "application/json-rpc"
 const jsonrpcVersion = "2.0"
-const jsonrpcEndpoint = "api_jsonrpc.php"
+const jsonrpcFilename = "api_jsonrpc.php"
 const loginMethod = "user.login"
 
-// Client represents a client for Zabbix API. NewClient() to create a Client.
+// Client represents a client for Zabbix JSON-RPC API.
 type Client struct {
 	httpClient *http.Client
 	apiURL     string
 	host       string
 
-	requestID  atomic.Uint64
-	sessionID  string
-	apiVersion APIVersion
+	requestID atomic.Uint64
+	sessionID string
+
+	apiVerOnce sync.Once
+	apiVer     APIVersion
 }
 
 type ClientOpt func(c *Client)
@@ -42,6 +45,9 @@ func WithHTTPClient(httpClient *http.Client) ClientOpt {
 	}
 }
 
+// NewClient creates a client for Zabbix JSON-RPC API.
+// zabbixURL is something like http://example.com/zabbix/, and not like
+// http://example.com/zabbix/index.php.
 func NewClient(zabbixURL string, opts ...ClientOpt) (*Client, error) {
 	c := &Client{}
 	for _, opt := range opts {
@@ -52,21 +58,27 @@ func NewClient(zabbixURL string, opts ...ClientOpt) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	c.apiURL = u.JoinPath(jsonrpcEndpoint).String()
+	c.apiURL = u.JoinPath(jsonrpcFilename).String()
 	if c.httpClient == nil {
-		c.httpClient = &http.Client{}
+		c.httpClient = http.DefaultClient
 	}
 	return c, nil
 }
 
-// Login to Zabbix API
+// Login sends a "user.login" request to the server.
+// If the login is successful, the session ID will be returned from the server.
+// It is kept in the Client and it will be set to requests created with Call
+// method called after this call of Login method.
 func (c *Client) Login(ctx context.Context, username, password string) error {
-	if err := c.getAPIInfoVersionOnce(ctx); err != nil {
+	apiVer, err := c.APIVersion(ctx)
+	if err != nil {
 		return err
 	}
 
 	var params any
-	if c.apiVersion.Compare(APIVersion{Major: 5, Minor: 4}) >= 0 {
+	if apiVer.Compare(APIVersion{Major: 6, Minor: 4, Patch: 0,
+		PreRelType: Beta, PreRelVer: 5}) >= 0 {
+		// https://support.zabbix.com/browse/ZBXNEXT-8085
 		params = &struct {
 			Username string `json:"username"`
 			Password string `json:"password"`
@@ -83,77 +95,142 @@ func (c *Client) Login(ctx context.Context, username, password string) error {
 	}
 
 	var auth string
-	err := c.Call(ctx, loginMethod, params, &auth)
-	if err != nil {
+	if err := c.Call(ctx, loginMethod, params, &auth); err != nil {
 		return err
 	}
-
 	if auth == "" {
-		// NOTE: When a error happens, rpcResponse.Error becomes non-null,
-		// so this should not happen.
 		return errors.New("user.login API should have return a valid (non-empty) auth")
 	}
 
 	c.sessionID = auth
-
 	return nil
 }
 
-// Call calls a Zabbix API and gets the result.
-// See https://github.com/hnakamur/go-zabbix/blob/46d9f81a6406cecd04ff2f9d41b29efb475a58e9/cmd/example/main.go#L113-L142
-// for an example.
+// Call sends a JSON-RPC request to the server.
+// The caller of this method must pass a pointer to the appropriate type of result.
+// The appropriate type is different for method and params.
 func (c *Client) Call(ctx context.Context, method string, params, result any) error {
 	type responseCommon struct {
-		Jsonrpc string `json:"jsonrpc"`
-		Error   *Error `json:"error"`
-		ID      uint64 `json:"id"`
+		Jsonrpc string    `json:"jsonrpc"`
+		Error   *APIError `json:"error"`
+		ID      uint64    `json:"id"`
 	}
 
 	var res struct {
 		responseCommon
-		Result any `json:"result,string"`
+		Result any `json:"result"`
 	}
 	res.Result = result
 	req, err := c.internalCall(ctx, method, params, &res)
 	if err != nil {
-		return err
+		return &CallError{
+			ID:     req.ID,
+			Method: req.Method,
+			Params: req.Params,
+			Err:    err,
+		}
 	}
 	if res.Error != nil {
-		res.Error.Method = method
-		return res.Error
+		return &CallError{
+			ID:     req.ID,
+			Method: req.Method,
+			Params: req.Params,
+			Err:    res.Error,
+		}
 	}
 	if res.ID != req.ID {
-		return fmt.Errorf("response ID (%d) does not match resquest ID (%d)", res.ID, req.ID)
+		return &CallError{
+			ID:     req.ID,
+			Method: req.Method,
+			Params: req.Params,
+			Err: fmt.Errorf("response ID (%d) does not match resquest ID (%d)",
+				res.ID, req.ID),
+		}
 	}
 	return nil
 }
 
-// Error represents an error from Zabbix API
-type Error struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-	Data    string `json:"data"`
-	Method  string `json:"-"`
+// CallError is the error type returned by Client.Call method.
+// The concret type of the Err field is APIError or other error.
+type CallError struct {
+	ID     uint64 `json:"id"`
+	Method string `json:"method"`
+	Params any    `json:"params"`
+	Err    error  `json:"error"`
 }
 
-// Returns a string for an error from Zabbix API
-func (e Error) Error() string {
-	return fmt.Sprintf("%s method=%s, code=%d, data=%s", e.Message, e.Method, e.Code, e.Data)
-}
+var _ error = (*CallError)(nil)
 
-func (c *Client) getAPIInfoVersionOnce(ctx context.Context) error {
-	if !c.apiVersion.IsZero() {
-		return nil
-	}
-	ver, err := c.apiInfoVersion(ctx)
+func (e *CallError) Error() string {
+	data, err := json.Marshal(e)
 	if err != nil {
-		return err
+		panic(err)
 	}
-	c.apiVersion = ver
-	return nil
+	return string(data)
 }
 
-func (c *Client) apiInfoVersion(ctx context.Context) (APIVersion, error) {
+func (e *CallError) Unwrap() error {
+	return e.Err
+}
+
+type ErrorCode int
+
+const (
+	ErrorCodeNotAPIError    ErrorCode = 0
+	ErrorCodeParse          ErrorCode = -32700
+	ErrorCodeInvalidRequest ErrorCode = -32600
+	ErrorCodeMethodNotFound ErrorCode = -32601
+	ErrorCodeInvalidParams  ErrorCode = -32602
+	ErrorCodeInternal       ErrorCode = -32603
+	ErrorCodeApplication    ErrorCode = -32500
+	ErrorCodeSystem         ErrorCode = -32400
+	ErrorCodeTransport      ErrorCode = -32300
+)
+
+// GetErrorCode returns the Code field if err or a unwrapped error is APIError
+// or ErrorCodeNotAPIError otherwise.
+func GetErrorCode(err error) ErrorCode {
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Code
+	}
+	return ErrorCodeNotAPIError
+}
+
+// APIError is an error object in responses from Zabbix JSON-RPC API.
+// https://www.zabbix.com/documentation/current/en/manual/api#error-handling
+type APIError struct {
+	Code    ErrorCode `json:"code"`
+	Message string    `json:"message"`
+	Data    string    `json:"data"`
+}
+
+var _ error = (*APIError)(nil)
+
+func (e *APIError) Error() string {
+	data, err := json.Marshal(e)
+	if err != nil {
+		panic(err)
+	}
+	return string(data)
+}
+
+// APIVersion returns APIVersion.
+// For the first call of this method, a request is sent to the server and
+// the result will be cached.
+// For subsequent call of this method, it returns the cached value.
+func (c *Client) APIVersion(ctx context.Context) (APIVersion, error) {
+	var err error
+	c.apiVerOnce.Do(func() {
+		c.apiVer, err = c.getAPIVersion(ctx)
+	})
+	if err != nil {
+		return c.apiVer, err
+	}
+	return c.apiVer, nil
+}
+
+func (c *Client) getAPIVersion(ctx context.Context) (APIVersion, error) {
 	var v APIVersion
 	var ver string
 	if err := c.Call(ctx, "apiinfo.version", []string{}, &ver); err != nil {
@@ -164,10 +241,6 @@ func (c *Client) apiInfoVersion(ctx context.Context) (APIVersion, error) {
 		return v, err
 	}
 	return v, nil
-}
-
-func (c *Client) APIVersion() APIVersion {
-	return c.apiVersion
 }
 
 func (c *Client) internalCall(ctx context.Context, method string, params, result any) (req *rpcRequest, err error) {

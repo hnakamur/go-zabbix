@@ -176,7 +176,10 @@ func (e *CallError) Unwrap() error {
 type ErrorCode int
 
 const (
-	ErrorCodeNotAPIError    ErrorCode = 0
+	// ErrorCodeNone represents the error which is not an error object from
+	// Zabbix JSON-RPC API but some other error occurred in the client side.
+	ErrorCodeNone ErrorCode = 0
+
 	ErrorCodeParse          ErrorCode = -32700
 	ErrorCodeInvalidRequest ErrorCode = -32600
 	ErrorCodeMethodNotFound ErrorCode = -32601
@@ -188,13 +191,13 @@ const (
 )
 
 // GetErrorCode returns the Code field if err or a unwrapped error is APIError
-// or ErrorCodeNotAPIError otherwise.
+// or ErrorCodeNone otherwise.
 func GetErrorCode(err error) ErrorCode {
 	var apiErr *APIError
 	if errors.As(err, &apiErr) {
 		return apiErr.Code
 	}
-	return ErrorCodeNotAPIError
+	return ErrorCodeNone
 }
 
 // APIError is an error object in responses from Zabbix JSON-RPC API.

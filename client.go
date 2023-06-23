@@ -262,7 +262,7 @@ func (c *Client) internalCall(ctx context.Context, method string, params, result
 	if err != nil {
 		return req, err
 	}
-	// log.Printf("response: %s", string(bodyBytes))
+	// log.Printf("method:%s, response: %s", method, string(bodyBytes))
 	if err := json.Unmarshal(bodyBytes, result); err != nil {
 		return req, err
 	}

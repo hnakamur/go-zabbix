@@ -42,11 +42,10 @@ func main() {
 				EnvVars:  []string{"ZBX_USERNAME"},
 			},
 			&cli.StringFlag{
-				Name:     "password",
-				Aliases:  []string{"p"},
-				Usage:    "password to login Zabbix",
-				Required: true,
-				EnvVars:  []string{"ZBX_PASSWORD"},
+				Name:    "password",
+				Aliases: []string{"p"},
+				Usage:   "password to login Zabbix (shows prompt if empty)",
+				EnvVars: []string{"ZBX_PASSWORD"},
 			},
 			&cli.BoolFlag{
 				Name:  "debug",
@@ -451,6 +450,14 @@ func newClient(cCtx *cli.Context) (*myClient, error) {
 func login(cCtx *cli.Context, c *myClient) error {
 	username := cCtx.String("username")
 	password := cCtx.String("password")
+
+	if password == "" {
+		p, err := readSecret("Enter password for Zabbix:")
+		if err != nil {
+			return err
+		}
+		password = string(p)
+	}
 
 	if err := c.Login(cCtx.Context, username, password); err != nil {
 		return err

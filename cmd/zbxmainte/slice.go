@@ -1,11 +1,16 @@
 package main
 
 import (
+	"golang.org/x/exp/constraints"
 	"golang.org/x/exp/maps"
+	"golang.org/x/exp/slices"
 )
 
 func MapSlice[E1, E2 any](x []E1, conv func(e E1) E2) []E2 {
 	var res []E2
+	if x != nil {
+		res = []E2{}
+	}
 	for _, e := range x {
 		res = append(res, conv(e))
 	}
@@ -27,8 +32,8 @@ func SliceContainsDup[T comparable](x []T) bool {
 	return false
 }
 
-func SliceConcatDeDup[T comparable](x ...[]T) []T {
-	if len(x) == 0 {
+func SliceConcatDeDup[T constraints.Ordered](x ...[]T) []T {
+	if x == nil {
 		return nil
 	}
 	s := make(map[T]struct{})
@@ -39,5 +44,7 @@ func SliceConcatDeDup[T comparable](x ...[]T) []T {
 			}
 		}
 	}
-	return maps.Keys(s)
+	ret := maps.Keys(s)
+	slices.Sort(ret)
+	return ret
 }

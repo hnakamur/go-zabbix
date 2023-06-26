@@ -64,18 +64,19 @@ func main() {
 						Usage:    "name of maintenance to create",
 					},
 					&cli.StringFlag{
-						Name:    "description",
+						Name:    "desc",
 						Aliases: []string{"d"},
 						Usage:   "description of maintenance",
 					},
 					&cli.StringSliceFlag{
-						Name:    "hostgroup",
+						Name:    "group",
 						Aliases: []string{"g"},
 						Usage:   "host group names",
 					},
 					&cli.StringSliceFlag{
-						Name:  "host",
-						Usage: "host names",
+						Name:    "host",
+						Aliases: []string{"H"},
+						Usage:   "host names",
 					},
 					&cli.TimestampFlag{
 						Name:     "active-since",
@@ -125,18 +126,19 @@ func main() {
 						Usage:   `name of target maintenance, or rename maintenance (when "--id" is set)`,
 					},
 					&cli.StringFlag{
-						Name:    "description",
+						Name:    "desc",
 						Aliases: []string{"d"},
 						Usage:   "description of maintenance",
 					},
 					&cli.StringSliceFlag{
-						Name:    "hostgroup",
+						Name:    "group",
 						Aliases: []string{"g"},
 						Usage:   "host group names (or set empty string just once to clear hostgroups)",
 					},
 					&cli.StringSliceFlag{
-						Name:  "host",
-						Usage: "host names (or set empty string just once to clear hosts)",
+						Name:    "host",
+						Aliases: []string{"H"},
+						Usage:   "host names (or set empty string just once to clear hosts)",
 					},
 					&cli.TimestampFlag{
 						Name:     "active-since",

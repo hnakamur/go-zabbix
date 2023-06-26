@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"runtime/debug"
 	"time"
 
 	"golang.org/x/exp/slices"
@@ -17,8 +18,9 @@ import (
 
 func main() {
 	app := &cli.App{
-		Name:  "zbxmainte",
-		Usage: "create, get, update, or detele Zabbix maintenances",
+		Name:    "zbxmainte",
+		Usage:   "create, get, update, or detele Zabbix maintenance",
+		Version: Version(),
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:     "url",
@@ -164,7 +166,7 @@ func main() {
 			},
 			{
 				Name:  "delete",
-				Usage: "delete a Zabbix maintenance",
+				Usage: "delete a Zabbix maintenance(s)",
 				Flags: []cli.Flag{
 					&cli.StringSliceFlag{
 						Name:  "id",
@@ -468,4 +470,15 @@ func maintenanceURL(cCtx *cli.Context, maintenanceID zabbix.ID) (*url.URL, error
 	v.Add("maintenanceid", maintenanceID.String())
 	u.RawQuery = v.Encode()
 	return u, nil
+}
+
+func Version() string {
+	// This code is copied from
+	// https://blog.lufia.org/entry/2020/12/18/002238
+
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "(devel)"
+	}
+	return info.Main.Version
 }

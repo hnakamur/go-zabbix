@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"sync"
@@ -23,6 +24,7 @@ type Client struct {
 	httpClient *http.Client
 	apiURL     string
 	host       string
+	debug      bool
 
 	requestID atomic.Uint64
 	sessionID string
@@ -42,6 +44,12 @@ func WithHost(host string) ClientOpt {
 func WithHTTPClient(httpClient *http.Client) ClientOpt {
 	return func(c *Client) {
 		c.httpClient = httpClient
+	}
+}
+
+func WithDebug(debug bool) ClientOpt {
+	return func(c *Client) {
+		c.debug = debug
 	}
 }
 
@@ -262,7 +270,9 @@ func (c *Client) internalCall(ctx context.Context, method string, params, result
 	if err != nil {
 		return req, err
 	}
-	// log.Printf("method:%s, response: %s", method, string(bodyBytes))
+	if c.debug {
+		log.Printf("DEBUG response %s, status: %d", string(bodyBytes), httpRes.StatusCode)
+	}
 	if err := json.Unmarshal(bodyBytes, result); err != nil {
 		return req, err
 	}
@@ -297,7 +307,9 @@ func (c *Client) newHTTPRequestWithContext(ctx context.Context, r *rpcRequest) (
 	if err != nil {
 		return nil, err
 	}
-	// log.Printf("request:%s", string(b))
+	if c.debug {
+		log.Printf("DEBUG request %s", string(b))
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.apiURL, bytes.NewReader(b))
 	if err != nil {
 		return nil, err

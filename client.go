@@ -79,6 +79,16 @@ func NewClient(zabbixURL string, opts ...ClientOpt) (*Client, error) {
 	return c, nil
 }
 
+type loginParams struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type oldLoginParams struct {
+	User     string `json:"user"`
+	Password string `json:"password"`
+}
+
 // Login sends a "user.login" request to the server.
 // If the login is successful, the session ID will be returned from the server.
 // It is kept in the Client and it will be set to requests created with Call
@@ -93,19 +103,9 @@ func (c *Client) Login(ctx context.Context, username, password string) error {
 	if apiVer.Compare(APIVersion{Major: 6, Minor: 4, Patch: 0,
 		PreRelType: Beta, PreRelVer: 5}) >= 0 {
 		// https://support.zabbix.com/browse/ZBXNEXT-8085
-		params = &struct {
-			Username string `json:"username"`
-			Password string `json:"password"`
-		}{
-			Username: username, Password: password,
-		}
+		params = &loginParams{Username: username, Password: password}
 	} else {
-		params = &struct {
-			User     string `json:"user"`
-			Password string `json:"password"`
-		}{
-			User: username, Password: password,
-		}
+		params = &oldLoginParams{User: username, Password: password}
 	}
 
 	var auth string
@@ -136,6 +136,9 @@ func (c *Client) Call(ctx context.Context, method string, params, result any) er
 	}
 	res.Result = result
 	req, err := c.internalCall(ctx, method, params, &res)
+	if c.debug {
+		c.debugRPCCall(req, err)
+	}
 	if err != nil {
 		return &CallError{
 			ID:     req.ID,
@@ -162,6 +165,34 @@ func (c *Client) Call(ctx context.Context, method string, params, result any) er
 		}
 	}
 	return nil
+}
+
+const hiddenSecretForLog = "(secret)"
+
+func (c *Client) debugRPCCall(req *rpcRequest, err error) {
+	req2 := *req
+	if req2.Method == loginMethod {
+		if p, ok := req2.Params.(*loginParams); ok {
+			req2.Params = &loginParams{
+				Username: p.Username,
+				Password: hiddenSecretForLog,
+			}
+		} else if p, ok := req2.Params.(*oldLoginParams); ok {
+			req2.Params = &oldLoginParams{
+				User:     p.User,
+				Password: hiddenSecretForLog,
+			}
+		}
+	}
+	if req2.Auth != nil && req2.Auth != "" {
+		req2.Auth = hiddenSecretForLog
+	}
+	req2Bytes, err2 := json.Marshal(req2)
+	if err2 != nil {
+		panic(err2)
+	}
+	log.Printf("DEBUG request=%s, response=%s, status=%d, err=%v",
+		string(req2Bytes), string(req.respBodyBytes), req.statusCode, err)
 }
 
 // CallError is the error type returned by Client.Call method.
@@ -276,9 +307,8 @@ func (c *Client) internalCall(ctx context.Context, method string, params, result
 	if err != nil {
 		return req, err
 	}
-	if c.debug {
-		log.Printf("DEBUG response %s, status: %d", string(bodyBytes), httpRes.StatusCode)
-	}
+	req.statusCode = httpRes.StatusCode
+	req.respBodyBytes = bodyBytes
 	if err := json.Unmarshal(bodyBytes, result); err != nil {
 		return req, err
 	}
@@ -290,7 +320,10 @@ type rpcRequest struct {
 	Method  string `json:"method"`
 	Params  any    `json:"params"`
 	ID      uint64 `json:"id"`
-	Auth    any    `json:"auth"`
+	Auth    any    `json:"auth,omitempty"`
+
+	statusCode    int    `json:"-"`
+	respBodyBytes []byte `json:"-"`
 }
 
 func (c *Client) newRPCRequest(method string, params any) *rpcRequest {
@@ -312,9 +345,6 @@ func (c *Client) newHTTPRequestWithContext(ctx context.Context, r *rpcRequest) (
 	b, err := json.Marshal(r)
 	if err != nil {
 		return nil, err
-	}
-	if c.debug {
-		log.Printf("DEBUG request %s", string(b))
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.apiURL, bytes.NewReader(b))
 	if err != nil {

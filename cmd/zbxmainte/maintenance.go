@@ -2,17 +2,14 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/hnakamur/go-zabbix"
 )
 
 // https://www.zabbix.com/documentation/6.0/en/manual/api/reference/maintenance/object
 type Maintenance struct {
-	MaintenaceID   zabbix.ID
+	MaintenaceID   string
 	Name           string
 	ActiveSince    time.Time
 	ActiveTill     time.Time
@@ -24,146 +21,144 @@ type Maintenance struct {
 	TimePeriods    []TimePeriod
 }
 
-type MaintenanceType int32
+type MaintenanceType string
 
 const (
-	MaintenanceTypeWithData MaintenanceType = 0
-	MaintenanceTypeNoData   MaintenanceType = 1
+	MaintenanceTypeWithData MaintenanceType = "0"
+	MaintenanceTypeNoData   MaintenanceType = "1"
 )
 
-type TagsEvalType int32
+type TagsEvalType string
 
 const (
-	TagsEvalTypeAndOr TagsEvalType = 0
-	TagsEvalTypeOr    TagsEvalType = 1
+	TagsEvalTypeAndOr TagsEvalType = "0"
+	TagsEvalTypeOr    TagsEvalType = "1"
 )
 
 type rpcMaintenance struct {
-	MaintenaceID   zabbix.ID        `json:"maintenanceid,omitempty"`
-	Name           string           `json:"name,omitempty"`
-	ActiveSince    zabbix.Timestamp `json:"active_since,omitempty"`
-	ActiveTill     zabbix.Timestamp `json:"active_till,omitempty"`
-	Description    string           `json:"description,omitempty"`
-	MaintenaceType zabbix.Int32     `json:"maintenance_type,omitempty"`
-	TagsEvalType   zabbix.Int32     `json:"tags_evaltype,omitempty"`
-	Groups         []HostGroup      `json:"groups"`
-	Hosts          []Host           `json:"hosts"`
-	TimePeriods    []TimePeriod     `json:"timeperiods,omitempty"`
+	MaintenaceID   string          `json:"maintenanceid,omitempty"`
+	Name           string          `json:"name,omitempty"`
+	ActiveSince    string          `json:"active_since,omitempty"`
+	ActiveTill     string          `json:"active_till,omitempty"`
+	Description    string          `json:"description,omitempty"`
+	MaintenaceType string          `json:"maintenance_type,omitempty"`
+	TagsEvalType   string          `json:"tags_evaltype,omitempty"`
+	Groups         []HostGroup     `json:"groups"`
+	Hosts          []rpcHost       `json:"hosts"`
+	TimePeriods    []rpcTimePeriod `json:"timeperiods,omitempty"`
 }
 
-func (m Maintenance) MarshalJSON() ([]byte, error) {
-	rm := rpcMaintenance{
+func toMaintenance(m rpcMaintenance) (Maintenance, error) {
+	activeSince, err := ParseTimestamp(m.ActiveSince)
+	if err != nil {
+		return Maintenance{}, err
+	}
+	activeTill, err := ParseTimestamp(m.ActiveTill)
+	if err != nil {
+		return Maintenance{}, err
+	}
+	hosts, err := FailableMapSlice(m.Hosts, toHost)
+	if err != nil {
+		return Maintenance{}, err
+	}
+	timePeriods, err := FailableMapSlice(m.TimePeriods, toTimePeriod)
+	if err != nil {
+		return Maintenance{}, err
+	}
+
+	return Maintenance{
 		MaintenaceID:   m.MaintenaceID,
 		Name:           m.Name,
-		ActiveSince:    zabbix.Timestamp(m.ActiveSince),
-		ActiveTill:     zabbix.Timestamp(m.ActiveTill),
+		ActiveSince:    time.Time(activeSince),
+		ActiveTill:     time.Time(activeTill),
 		Description:    m.Description,
-		MaintenaceType: zabbix.Int32(m.MaintenaceType),
-		TagsEvalType:   zabbix.Int32(m.TagsEvalType),
+		MaintenaceType: MaintenanceType(m.MaintenaceType),
+		TagsEvalType:   TagsEvalType(m.TagsEvalType),
 		Groups:         m.Groups,
-		Hosts:          m.Hosts,
-		TimePeriods:    m.TimePeriods,
-	}
-	return json.Marshal(rm)
+		Hosts:          hosts,
+		TimePeriods:    timePeriods,
+	}, nil
 }
 
-func (m *Maintenance) UnmarshalJSON(data []byte) error {
-	var rm rpcMaintenance
-	if err := json.Unmarshal(data, &rm); err != nil {
-		return err
+func toRPCMaintenance(m Maintenance) (rpcMaintenance, error) {
+	rpcHosts, err := FailableMapSlice(m.Hosts, toRPCHost)
+	if err != nil {
+		return rpcMaintenance{}, err
 	}
-	*m = Maintenance{
-		MaintenaceID:   rm.MaintenaceID,
-		Name:           rm.Name,
-		ActiveSince:    time.Time(rm.ActiveSince),
-		ActiveTill:     time.Time(rm.ActiveTill),
-		Description:    rm.Description,
-		MaintenaceType: MaintenanceType(rm.MaintenaceType),
-		TagsEvalType:   TagsEvalType(rm.TagsEvalType),
-		Groups:         rm.Groups,
-		Hosts:          rm.Hosts,
-		TimePeriods:    rm.TimePeriods,
+	rpcTimePeriods, err := FailableMapSlice(m.TimePeriods, toRPCTimePeriod)
+	if err != nil {
+		return rpcMaintenance{}, err
 	}
-	return nil
+
+	return rpcMaintenance{
+		MaintenaceID:   m.MaintenaceID,
+		Name:           m.Name,
+		ActiveSince:    Timestamp(m.ActiveSince).String(),
+		ActiveTill:     Timestamp(m.ActiveTill).String(),
+		Description:    m.Description,
+		MaintenaceType: string(m.MaintenaceType),
+		TagsEvalType:   string(m.TagsEvalType),
+		Groups:         m.Groups,
+		Hosts:          rpcHosts,
+		TimePeriods:    rpcTimePeriods,
+	}, nil
 }
 
-type TimePeriodEvery int32
+type TimeperiodType string
 
 const (
-	TimePeriodEveryFirstWeek  TimePeriodEvery = 1
-	TimePeriodEverySecondWeek TimePeriodEvery = 2
-	TimePeriodEveryThirdWeek  TimePeriodEvery = 3
-	TimePeriodEveryFourthWeek TimePeriodEvery = 4
-	TimePeriodEveryLastWeek   TimePeriodEvery = 5
-)
-
-type TimeperiodType int32
-
-const (
-	TimeperiodTypeOnetimeOnly TimeperiodType = 0
-	TimeperiodTypeDaily       TimeperiodType = 2
-	TimeperiodTypeWeekly      TimeperiodType = 3
-	TimeperiodTypeMonthly     TimeperiodType = 4
+	TimeperiodTypeOnetimeOnly TimeperiodType = "0"
+	TimeperiodTypeDaily       TimeperiodType = "2"
+	TimeperiodTypeWeekly      TimeperiodType = "3"
+	TimeperiodTypeMonthly     TimeperiodType = "4"
 )
 
 type TimePeriod struct {
-	TimeperiodID   zabbix.ID
+	TimeperiodID   string
 	Period         time.Duration
 	TimeperiodType TimeperiodType
 	StartDate      time.Time
-	// 期間のタイプが「一度限り」以外の場合の開始時刻の0時からの秒数
-	StartTime time.Duration
-	Every     TimePeriodEvery
-	DayOfWeek int32
-	Day       int32
-	Month     int32
 }
 
 type rpcTimePeriod struct {
-	TimeperiodID   zabbix.ID        `json:"timeperiodid,omitempty"`
-	Period         zabbix.Int32     `json:"period,omitempty"`
-	TimeperiodType zabbix.Int32     `json:"timeperiod_type,omitempty"`
-	StartDate      zabbix.Timestamp `json:"start_date,omitempty"`
-	StartTime      zabbix.Int32     `json:"start_time,omitempty"`
-	Every          zabbix.Int32     `json:"every,omitempty"`
-	DayOfWeek      zabbix.Int32     `json:"dayofweek,omitempty"`
-	Day            zabbix.Int32     `json:"day,omitempty"`
-	Month          zabbix.Int32     `json:"month,omitempty"`
+	TimeperiodID   string `json:"timeperiodid,omitempty"`
+	Period         string `json:"period"`
+	TimeperiodType string `json:"timeperiod_type"`
+	StartDate      string `json:"start_date"`
 }
 
-func (t TimePeriod) MarshalJSON() ([]byte, error) {
-	rt := rpcTimePeriod{
-		TimeperiodID:   t.TimeperiodID,
-		Period:         zabbix.Int32(t.Period / time.Second),
-		TimeperiodType: zabbix.Int32(t.TimeperiodType),
-		StartDate:      zabbix.Timestamp(t.StartDate),
-		StartTime:      zabbix.Int32(t.StartTime / time.Second),
-		Every:          zabbix.Int32(t.Every),
-		DayOfWeek:      zabbix.Int32(t.DayOfWeek),
-		Day:            zabbix.Int32(t.Day),
-		Month:          zabbix.Int32(t.Month),
+func toTimePeriod(p rpcTimePeriod) (TimePeriod, error) {
+	period, err := ParseSeconds(p.Period)
+	if err != nil {
+		return TimePeriod{}, err
 	}
-	return json.Marshal(rt)
+	startDate, err := ParseTimestamp(p.StartDate)
+	if err != nil {
+		return TimePeriod{}, err
+	}
+
+	return TimePeriod{
+		TimeperiodID:   p.TimeperiodID,
+		Period:         time.Duration(period),
+		TimeperiodType: TimeperiodType(p.TimeperiodType),
+		StartDate:      time.Time(startDate),
+	}, nil
 }
 
-func (t *TimePeriod) UnmarshalJSON(data []byte) error {
-	var rt rpcTimePeriod
-	if err := json.Unmarshal(data, &rt); err != nil {
-		return err
-	}
-	*t = TimePeriod{
-		TimeperiodID:   rt.TimeperiodID,
-		Period:         time.Duration(rt.Period) * time.Second,
-		TimeperiodType: TimeperiodType(rt.TimeperiodType),
-		StartDate:      time.Time(rt.StartDate),
-		StartTime:      time.Duration(rt.StartTime) * time.Second,
-		Every:          TimePeriodEvery(rt.Every),
-		DayOfWeek:      int32(rt.DayOfWeek),
-		Day:            int32(rt.Day),
-		Month:          int32(rt.Month),
-	}
-	return nil
+func toRPCTimePeriod(p TimePeriod) (rpcTimePeriod, error) {
+	return rpcTimePeriod{
+		TimeperiodID:   p.TimeperiodID,
+		Period:         Seconds(p.Period).String(),
+		TimeperiodType: string(p.TimeperiodType),
+		StartDate:      Timestamp(p.StartDate).String(),
+	}, nil
 }
+
+var selectGroups = []string{"groupid", "name"}
+var selectHosts = []string{"hostid", "name", "maintenance_from",
+	"maintenance_status", "maintenance_type", "maintenanceid"}
+var selectTimeperiods = []string{"timeperiodid", "period", "timeperiod_type",
+	"start_date"}
 
 func (c *myClient) GetMaintenances(ctx context.Context) ([]Maintenance, error) {
 	params := struct {
@@ -173,15 +168,15 @@ func (c *myClient) GetMaintenances(ctx context.Context) ([]Maintenance, error) {
 		SelectTimeperiods any `json:"selectTimeperiods"`
 	}{
 		Output:            "extend",
-		SelectGroups:      []string{"groupid", "name"},
-		SelectHosts:       []string{"hostid", "name"},
-		SelectTimeperiods: "extend",
+		SelectGroups:      selectGroups,
+		SelectHosts:       selectHosts,
+		SelectTimeperiods: selectTimeperiods,
 	}
-	var result []Maintenance
-	if err := c.Client.Call(ctx, "maintenance.get", params, &result); err != nil {
+	var rm []rpcMaintenance
+	if err := c.Client.Call(ctx, "maintenance.get", params, &rm); err != nil {
 		return nil, err
 	}
-	return result, nil
+	return FailableMapSlice(rm, toMaintenance)
 }
 
 func (c *myClient) GetMaintenanceByID(ctx context.Context, maintenanceID string) (*Maintenance, error) {
@@ -197,19 +192,23 @@ func (c *myClient) GetMaintenanceByID(ctx context.Context, maintenanceID string)
 		Filter            any `json:"filter"`
 	}{
 		Output:            "extend",
-		SelectGroups:      []string{"groupid", "name"},
-		SelectHosts:       []string{"hostid", "name"},
-		SelectTimeperiods: "extend",
+		SelectGroups:      selectGroups,
+		SelectHosts:       selectHosts,
+		SelectTimeperiods: selectTimeperiods,
 		Filter:            Filter{MaintenanceID: []string{maintenanceID}},
 	}
-	var result []Maintenance
-	if err := c.Client.Call(ctx, "maintenance.get", params, &result); err != nil {
+	var rm []rpcMaintenance
+	if err := c.Client.Call(ctx, "maintenance.get", params, &rm); err != nil {
 		return nil, err
 	}
-	if len(result) != 1 {
-		return nil, fmt.Errorf("unexpected maintenance count, got=%d, want=1", len(result))
+	if len(rm) != 1 {
+		return nil, fmt.Errorf("unexpected maintenance count, got=%d, want=1", len(rm))
 	}
-	return &result[0], nil
+	m, err := toMaintenance(rm[0])
+	if err != nil {
+		return nil, err
+	}
+	return &m, nil
 }
 
 func (c *myClient) GetMaintenanceByNameFullMatch(ctx context.Context, name string) (*Maintenance, error) {
@@ -225,27 +224,31 @@ func (c *myClient) GetMaintenanceByNameFullMatch(ctx context.Context, name strin
 		Filter            any `json:"filter"`
 	}{
 		Output:            "extend",
-		SelectGroups:      []string{"groupid", "name"},
-		SelectHosts:       []string{"hostid", "name"},
-		SelectTimeperiods: "extend",
+		SelectGroups:      selectGroups,
+		SelectHosts:       selectHosts,
+		SelectTimeperiods: selectTimeperiods,
 		Filter:            Names{Name: []string{name}},
 	}
-	var result []Maintenance
-	if err := c.Client.Call(ctx, "maintenance.get", params, &result); err != nil {
+	var rm []rpcMaintenance
+	if err := c.Client.Call(ctx, "maintenance.get", params, &rm); err != nil {
 		return nil, err
 	}
-	if len(result) != 1 {
-		return nil, fmt.Errorf("unexpected maintenance count, got=%d, want=1", len(result))
+	if len(rm) != 1 {
+		return nil, fmt.Errorf("unexpected maintenance count, got=%d, want=1", len(rm))
 	}
-	return &result[0], nil
+	m, err := toMaintenance(rm[0])
+	if err != nil {
+		return nil, err
+	}
+	return &m, nil
 }
 
 func (c *myClient) CreateMaintenance(ctx context.Context, m *Maintenance) error {
-	type MaintenanceIDs struct {
-		MaintenanceIDs []zabbix.ID `json:"maintenanceids"`
+	type rpcMaintenanceIDs struct {
+		MaintenanceIDs []string `json:"maintenanceids"`
 	}
 
-	var ids MaintenanceIDs
+	var ids rpcMaintenanceIDs
 	if err := c.Client.Call(ctx, "maintenance.create", m, &ids); err != nil {
 		return err
 	}
@@ -257,12 +260,16 @@ func (c *myClient) CreateMaintenance(ctx context.Context, m *Maintenance) error 
 }
 
 func (c *myClient) UpdateMaintenance(ctx context.Context, m *Maintenance) error {
-	type MaintenanceIDs struct {
-		MaintenanceIDs []zabbix.ID `json:"maintenanceids"`
+	type rpcMaintenanceIDs struct {
+		MaintenanceIDs []string `json:"maintenanceids"`
 	}
 
-	var ids MaintenanceIDs
-	if err := c.Client.Call(ctx, "maintenance.update", m, &ids); err != nil {
+	rm, err := toRPCMaintenance(*m)
+	if err != nil {
+		return err
+	}
+	var ids rpcMaintenanceIDs
+	if err := c.Client.Call(ctx, "maintenance.update", rm, &ids); err != nil {
 		return err
 	}
 	if len(ids.MaintenanceIDs) != 1 {
@@ -272,8 +279,8 @@ func (c *myClient) UpdateMaintenance(ctx context.Context, m *Maintenance) error 
 	return nil
 }
 
-func (c *myClient) GetMaintenanceIDsByIDs(ctx context.Context, maintenanceIDs []string) ([]zabbix.ID, error) {
-	type Filter struct {
+func (c *myClient) GetMaintenanceIDsByIDs(ctx context.Context, maintenanceIDs []string) ([]string, error) {
+	type rpcFilter struct {
 		MaintenanceID []string `json:"maintenanceid"`
 	}
 
@@ -282,23 +289,23 @@ func (c *myClient) GetMaintenanceIDsByIDs(ctx context.Context, maintenanceIDs []
 		Filter any `json:"filter"`
 	}{
 		Output: "maintenanceid",
-		Filter: Filter{MaintenanceID: maintenanceIDs},
+		Filter: rpcFilter{MaintenanceID: maintenanceIDs},
 	}
-	var result []Maintenance
-	if err := c.Client.Call(ctx, "maintenance.get", params, &result); err != nil {
+	var rm []rpcMaintenance
+	if err := c.Client.Call(ctx, "maintenance.get", params, &rm); err != nil {
 		return nil, err
 	}
-	if len(result) != len(maintenanceIDs) {
-		return nil, fmt.Errorf("unexpected maintenance count returned by GetMaintenanceIDsByID: got=%d, want=%d", len(result), len(maintenanceIDs))
+	if len(rm) != len(maintenanceIDs) {
+		return nil, fmt.Errorf("unexpected maintenance count returned by GetMaintenanceIDsByID: got=%d, want=%d", len(rm), len(maintenanceIDs))
 	}
-	ids := MapSlice(result, func(m Maintenance) zabbix.ID {
+	ids := MapSlice(rm, func(m rpcMaintenance) string {
 		return m.MaintenaceID
 	})
 	return ids, nil
 }
 
-func (c *myClient) GetMaintenanceIDsByNamesFullMatch(ctx context.Context, names []string) ([]zabbix.ID, error) {
-	type Names struct {
+func (c *myClient) GetMaintenanceIDsByNamesFullMatch(ctx context.Context, names []string) ([]string, error) {
+	type rpcFilter struct {
 		Name []string `json:"name"`
 	}
 
@@ -307,27 +314,27 @@ func (c *myClient) GetMaintenanceIDsByNamesFullMatch(ctx context.Context, names 
 		Filter any `json:"filter"`
 	}{
 		Output: "maintenanceid",
-		Filter: Names{Name: names},
+		Filter: rpcFilter{Name: names},
 	}
-	var result []Maintenance
+	var result []rpcMaintenance
 	if err := c.Client.Call(ctx, "maintenance.get", params, &result); err != nil {
 		return nil, err
 	}
 	if len(result) != len(names) {
 		return nil, fmt.Errorf("unexpected maintenance count returned by GetMaintenanceIDsByNamesFullMatch: got=%d, want=%d", len(result), len(names))
 	}
-	maintenanceIDs := MapSlice(result, func(m Maintenance) zabbix.ID {
+	maintenanceIDs := MapSlice(result, func(m rpcMaintenance) string {
 		return m.MaintenaceID
 	})
 	return maintenanceIDs, nil
 }
 
-func (c *myClient) DeleteMaintenancesByIDs(ctx context.Context, ids []zabbix.ID) (deletedIDs []zabbix.ID, err error) {
-	type MaintenanceIDs struct {
-		MaintenanceIDs []zabbix.ID `json:"maintenanceids"`
+func (c *myClient) DeleteMaintenancesByIDs(ctx context.Context, ids []string) (deletedIDs []string, err error) {
+	type rpcMaintenanceIDs struct {
+		MaintenanceIDs []string `json:"maintenanceids"`
 	}
 
-	var maintenances MaintenanceIDs
+	var maintenances rpcMaintenanceIDs
 	if err := c.Client.Call(ctx, "maintenance.delete", ids, &maintenances); err != nil {
 		return nil, err
 	}
@@ -335,19 +342,28 @@ func (c *myClient) DeleteMaintenancesByIDs(ctx context.Context, ids []zabbix.ID)
 }
 
 type displayMaintenance struct {
-	MaintenaceID zabbix.ID           `json:"maintenanceid,omitempty"`
-	Name         string              `json:"name,omitempty"`
-	ActiveSince  displayTimestamp    `json:"active_since,omitempty"`
-	ActiveTill   displayTimestamp    `json:"active_till,omitempty"`
-	Description  string              `json:"description,omitempty"`
+	MaintenaceID string              `json:"maintenanceid"`
+	Name         string              `json:"name"`
+	ActiveSince  displayTimestamp    `json:"active_since"`
+	ActiveTill   displayTimestamp    `json:"active_till"`
+	Description  string              `json:"description"`
 	Groups       []HostGroup         `json:"groups"`
-	Hosts        []Host              `json:"hosts"`
-	TimePeriods  []displayTimePeriod `json:"timeperiods,omitempty"`
+	Hosts        []displayHost       `json:"hosts"`
+	TimePeriods  []displayTimePeriod `json:"timeperiods"`
+}
+
+type displayHost struct {
+	HostID            string           `json:"hostid"`
+	Name              string           `json:"name"`
+	MaintenanceFrom   displayTimestamp `json:"maintenance_from"`
+	MaintenanceStatus string           `json:"maintenance_status"`
+	MaintenanceType   MaintenanceType  `json:"maintenance_type"`
+	MaintenanceID     string           `json:"maintenanceid"`
 }
 
 type displayTimePeriod struct {
-	Period    displayDuration
-	StartDate displayTimestamp
+	Period    displayDuration  `json:"period"`
+	StartDate displayTimestamp `json:"start_date"`
 }
 
 func toDisplayMaintenance(m Maintenance) displayMaintenance {
@@ -358,8 +374,19 @@ func toDisplayMaintenance(m Maintenance) displayMaintenance {
 		ActiveTill:   displayTimestamp(m.ActiveTill),
 		Description:  m.Description,
 		Groups:       m.Groups,
-		Hosts:        m.Hosts,
+		Hosts:        MapSlice(m.Hosts, toDisplayHost),
 		TimePeriods:  MapSlice(m.TimePeriods, toDisplayTimePeriod),
+	}
+}
+
+func toDisplayHost(h Host) displayHost {
+	return displayHost{
+		HostID:            h.HostID,
+		Name:              h.Name,
+		MaintenanceFrom:   displayTimestamp(time.Time(h.MaintenanceFrom)),
+		MaintenanceStatus: h.MaintenanceStatus,
+		MaintenanceType:   MaintenanceType(h.MaintenanceType),
+		MaintenanceID:     h.MaintenanceID,
 	}
 }
 

@@ -17,6 +17,21 @@ func MapSlice[E1, E2 any](x []E1, conv func(e E1) E2) []E2 {
 	return res
 }
 
+func FailableMapSlice[E1, E2 any](x []E1, conv func(e E1) (E2, error)) ([]E2, error) {
+	var res []E2
+	if x != nil {
+		res = []E2{}
+	}
+	for _, e := range x {
+		e2, err := conv(e)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, e2)
+	}
+	return res, nil
+}
+
 func SliceContainsDup[T comparable](x []T) bool {
 	if len(x) == 0 {
 		return false

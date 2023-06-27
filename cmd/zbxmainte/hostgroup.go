@@ -2,13 +2,11 @@ package main
 
 import (
 	"context"
-
-	"github.com/hnakamur/go-zabbix"
 )
 
 type HostGroup struct {
-	GroupID zabbix.ID `json:"groupid"`
-	Name    string    `json:"name,omitempty"`
+	GroupID string `json:"groupid"`
+	Name    string `json:"name,omitempty"`
 }
 
 func (c *myClient) GetHostGroupsByNamesFullMatch(ctx context.Context,

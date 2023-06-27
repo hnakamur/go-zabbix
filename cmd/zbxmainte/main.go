@@ -346,9 +346,6 @@ func updateMaintenanceAction(cCtx *cli.Context) error {
 		maintenance.TimePeriods[0].Period = d
 	}
 
-	// I got "Invalid parameter" for value "1"
-	maintenance.TimePeriods[0].Every = 0
-
 	if err := client.UpdateMaintenance(cCtx.Context, maintenance); err != nil {
 		return err
 	}
@@ -406,7 +403,7 @@ func deleteMaintenanceAction(cCtx *cli.Context) error {
 		return err
 	}
 
-	var idsByIDs, idsByNames []zabbix.ID
+	var idsByIDs, idsByNames []string
 	if len(ids) > 0 {
 		idsByIDs, err = client.GetMaintenanceIDsByIDs(cCtx.Context, ids)
 		if err != nil {
@@ -480,7 +477,7 @@ func login(cCtx *cli.Context, c *myClient) error {
 	return nil
 }
 
-func maintenanceURL(cCtx *cli.Context, maintenanceID zabbix.ID) (*url.URL, error) {
+func maintenanceURL(cCtx *cli.Context, maintenanceID string) (*url.URL, error) {
 	zabbixURL, err := url.Parse(cCtx.String("url"))
 	if err != nil {
 		return nil, err
@@ -489,7 +486,7 @@ func maintenanceURL(cCtx *cli.Context, maintenanceID zabbix.ID) (*url.URL, error
 	u := zabbixURL.JoinPath("maintenance.php")
 	v := url.Values{}
 	v.Add("form", "update")
-	v.Add("maintenanceid", maintenanceID.String())
+	v.Add("maintenanceid", maintenanceID)
 	u.RawQuery = v.Encode()
 	return u, nil
 }

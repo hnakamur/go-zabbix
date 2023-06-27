@@ -123,8 +123,9 @@ func main() {
 				Usage: "update Zabbix maintenance",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
-						Name:  "id",
-						Usage: "target maintenance ID (name is used for specifying target if empty)",
+						Name:    "id",
+						Aliases: []string{"i"},
+						Usage:   "target maintenance ID (name is used for specifying target if empty)",
 					},
 					&cli.StringFlag{
 						Name:    "name",
@@ -176,8 +177,9 @@ func main() {
 				Usage: "delete a Zabbix maintenance(s)",
 				Flags: []cli.Flag{
 					&cli.StringSliceFlag{
-						Name:  "id",
-						Usage: "target maintenance ID to delete",
+						Name:    "id",
+						Aliases: []string{"i"},
+						Usage:   "target maintenance ID to delete",
 					},
 					&cli.StringSliceFlag{
 						Name:    "name",

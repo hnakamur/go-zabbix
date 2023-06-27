@@ -191,7 +191,7 @@ func main() {
 
 func createMaintenanceAction(cCtx *cli.Context) error {
 	hostNames := cCtx.StringSlice("host")
-	groupNames := cCtx.StringSlice("hostgroup")
+	groupNames := cCtx.StringSlice("group")
 	if len(hostNames) == 0 && len(groupNames) == 0 {
 		return errors.New(`at least "--host" or "--hostgroup" must be set`)
 	}
@@ -230,7 +230,7 @@ func createMaintenanceAction(cCtx *cli.Context) error {
 		Name:           cCtx.String("name"),
 		ActiveSince:    *cCtx.Timestamp("active-since"),
 		ActiveTill:     *cCtx.Timestamp("active-till"),
-		Description:    cCtx.String("description"),
+		Description:    cCtx.String("desc"),
 		MaintenaceType: MaintenanceTypeWithData,
 		TagsEvalType:   TagsEvalTypeAndOr,
 		Groups:         groupsJustID,
@@ -258,7 +258,7 @@ func createMaintenanceAction(cCtx *cli.Context) error {
 
 func updateMaintenanceAction(cCtx *cli.Context) error {
 	hostNames := cCtx.StringSlice("host")
-	groupNames := cCtx.StringSlice("hostgroup")
+	groupNames := cCtx.StringSlice("group")
 
 	client, err := newClient(cCtx)
 	if err != nil {
@@ -327,7 +327,7 @@ func updateMaintenanceAction(cCtx *cli.Context) error {
 		})
 	}
 
-	if s := cCtx.String("description"); s != "" {
+	if s := cCtx.String("desc"); s != "" {
 		maintenance.Description = s
 	}
 	if t := cCtx.Timestamp("active-since"); t != nil {

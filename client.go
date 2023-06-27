@@ -27,7 +27,7 @@ type Client struct {
 	debug      bool
 
 	requestID atomic.Uint64
-	sessionID string
+	auth      string
 
 	apiVerOnce sync.Once
 	apiVer     APIVersion
@@ -50,6 +50,12 @@ func WithHTTPClient(httpClient *http.Client) ClientOpt {
 func WithDebug(debug bool) ClientOpt {
 	return func(c *Client) {
 		c.debug = debug
+	}
+}
+
+func WithAPIToken(token string) ClientOpt {
+	return func(c *Client) {
+		c.auth = token
 	}
 }
 
@@ -110,7 +116,7 @@ func (c *Client) Login(ctx context.Context, username, password string) error {
 		return errors.New("user.login API should have return a valid (non-empty) auth")
 	}
 
-	c.sessionID = auth
+	c.auth = auth
 	return nil
 }
 
@@ -296,8 +302,8 @@ func (c *Client) newRPCRequest(method string, params any) *rpcRequest {
 		Params:  params,
 		ID:      reqID,
 	}
-	if c.sessionID != "" && method != loginMethod {
-		r.Auth = c.sessionID
+	if c.auth != "" && method != loginMethod {
+		r.Auth = c.auth
 	}
 	return r
 }

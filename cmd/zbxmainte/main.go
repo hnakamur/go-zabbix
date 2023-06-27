@@ -37,17 +37,21 @@ func main() {
 				EnvVars: []string{"ZBX_VIRTUAL_HOST"},
 			},
 			&cli.StringFlag{
-				Name:     "username",
-				Aliases:  []string{"u"},
-				Usage:    "username to login Zabbix",
-				Required: true,
-				EnvVars:  []string{"ZBX_USERNAME"},
+				Name:    "username",
+				Aliases: []string{"u"},
+				Usage:   "username to login Zabbix",
+				EnvVars: []string{"ZBX_USERNAME"},
 			},
 			&cli.StringFlag{
 				Name:    "password",
 				Aliases: []string{"p"},
-				Usage:   "password to login Zabbix (shows prompt if empty)",
+				Usage:   "password to login Zabbix (shows prompt if both of this and token are empty)",
 				EnvVars: []string{"ZBX_PASSWORD"},
+			},
+			&cli.StringFlag{
+				Name:    "token",
+				Usage:   "Zabbix API token",
+				EnvVars: []string{"ZBX_API_TOKEN"},
 			},
 			&cli.BoolFlag{
 				Name:  "debug",
@@ -202,9 +206,6 @@ func createMaintenanceAction(cCtx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := login(cCtx, client); err != nil {
-		return err
-	}
 
 	hostsJustID := []Host{}
 	if len(hostNames) > 0 {
@@ -264,9 +265,6 @@ func updateMaintenanceAction(cCtx *cli.Context) error {
 
 	client, err := newClient(cCtx)
 	if err != nil {
-		return err
-	}
-	if err := login(cCtx, client); err != nil {
 		return err
 	}
 
@@ -369,9 +367,6 @@ func getMaintenancesAction(cCtx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := login(cCtx, client); err != nil {
-		return err
-	}
 
 	maintenances, err := client.GetMaintenances(cCtx.Context)
 	if err != nil {
@@ -410,9 +405,6 @@ func deleteMaintenanceAction(cCtx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := login(cCtx, client); err != nil {
-		return err
-	}
 
 	var idsByIDs, idsByNames []zabbix.ID
 	if len(ids) > 0 {
@@ -444,17 +436,35 @@ func newClient(cCtx *cli.Context) (*myClient, error) {
 	if hostHeader != "" {
 		opts = append(opts, zabbix.WithHost(hostHeader))
 	}
+
+	token := cCtx.String("token")
+	if token != "" {
+		opts = append(opts, zabbix.WithAPIToken(token))
+	}
 	opts = append(opts, zabbix.WithDebug(cCtx.Bool("debug")))
+
 	c, err := zabbix.NewClient(zabbixURL, opts...)
 	if err != nil {
 		return nil, err
 	}
-	return &myClient{Client: c}, nil
+
+	client := &myClient{Client: c}
+	if token == "" {
+		if err := login(cCtx, client); err != nil {
+			return nil, err
+		}
+	}
+
+	return client, nil
 }
 
 func login(cCtx *cli.Context, c *myClient) error {
 	username := cCtx.String("username")
 	password := cCtx.String("password")
+
+	if username == "" {
+		return errors.New(`"--token" or "--username" must be set`)
+	}
 
 	if password == "" {
 		p, err := readSecret("Enter password for Zabbix:")

@@ -57,7 +57,7 @@ func (c *myClient) GetHostsByNamesFullMatch(ctx context.Context,
 		Output any `json:"output"`
 		Filter any `json:"filter"`
 	}{
-		Output: []string{"hostid", "name"},
+		Output: selectHosts,
 		Filter: Names{
 			Name: names,
 		},

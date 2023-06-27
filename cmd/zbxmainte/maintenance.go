@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
+
+	"github.com/hnakamur/go-zabbix/internal/rpc"
+	"github.com/hnakamur/go-zabbix/internal/slicex"
 )
 
 // https://www.zabbix.com/documentation/6.0/en/manual/api/reference/maintenance/object
@@ -35,20 +37,7 @@ const (
 	TagsEvalTypeOr    TagsEvalType = "1"
 )
 
-type rpcMaintenance struct {
-	MaintenaceID   string          `json:"maintenanceid,omitempty"`
-	Name           string          `json:"name,omitempty"`
-	ActiveSince    string          `json:"active_since,omitempty"`
-	ActiveTill     string          `json:"active_till,omitempty"`
-	Description    string          `json:"description,omitempty"`
-	MaintenaceType string          `json:"maintenance_type,omitempty"`
-	TagsEvalType   string          `json:"tags_evaltype,omitempty"`
-	Groups         []HostGroup     `json:"groups"`
-	Hosts          []rpcHost       `json:"hosts"`
-	TimePeriods    []rpcTimePeriod `json:"timeperiods,omitempty"`
-}
-
-func toMaintenance(m rpcMaintenance) (Maintenance, error) {
+func fromPRCMaintenance(m rpc.Maintenance) (Maintenance, error) {
 	activeSince, err := ParseTimestamp(m.ActiveSince)
 	if err != nil {
 		return Maintenance{}, err
@@ -57,11 +46,11 @@ func toMaintenance(m rpcMaintenance) (Maintenance, error) {
 	if err != nil {
 		return Maintenance{}, err
 	}
-	hosts, err := FailableMapSlice(m.Hosts, toHost)
+	hosts, err := slicex.FailableMap(m.Hosts, fromRPCHost)
 	if err != nil {
 		return Maintenance{}, err
 	}
-	timePeriods, err := FailableMapSlice(m.TimePeriods, toTimePeriod)
+	timePeriods, err := slicex.FailableMap(m.TimePeriods, fromRPCTimePeriod)
 	if err != nil {
 		return Maintenance{}, err
 	}
@@ -80,17 +69,17 @@ func toMaintenance(m rpcMaintenance) (Maintenance, error) {
 	}, nil
 }
 
-func toRPCMaintenance(m Maintenance) (rpcMaintenance, error) {
-	rpcHosts, err := FailableMapSlice(m.Hosts, toRPCHost)
+func toRPCMaintenance(m Maintenance) (rpc.Maintenance, error) {
+	rpcHosts, err := slicex.FailableMap(m.Hosts, toRPCHost)
 	if err != nil {
-		return rpcMaintenance{}, err
+		return rpc.Maintenance{}, err
 	}
-	rpcTimePeriods, err := FailableMapSlice(m.TimePeriods, toRPCTimePeriod)
+	rpcTimePeriods, err := slicex.FailableMap(m.TimePeriods, toRPCTimePeriod)
 	if err != nil {
-		return rpcMaintenance{}, err
+		return rpc.Maintenance{}, err
 	}
 
-	return rpcMaintenance{
+	return rpc.Maintenance{
 		MaintenaceID:   m.MaintenaceID,
 		Name:           m.Name,
 		ActiveSince:    Timestamp(m.ActiveSince).String(),
@@ -120,14 +109,7 @@ type TimePeriod struct {
 	StartDate      time.Time
 }
 
-type rpcTimePeriod struct {
-	TimeperiodID   string `json:"timeperiodid,omitempty"`
-	Period         string `json:"period"`
-	TimeperiodType string `json:"timeperiod_type"`
-	StartDate      string `json:"start_date"`
-}
-
-func toTimePeriod(p rpcTimePeriod) (TimePeriod, error) {
+func fromRPCTimePeriod(p rpc.TimePeriod) (TimePeriod, error) {
 	period, err := ParseSeconds(p.Period)
 	if err != nil {
 		return TimePeriod{}, err
@@ -145,8 +127,8 @@ func toTimePeriod(p rpcTimePeriod) (TimePeriod, error) {
 	}, nil
 }
 
-func toRPCTimePeriod(p TimePeriod) (rpcTimePeriod, error) {
-	return rpcTimePeriod{
+func toRPCTimePeriod(p TimePeriod) (rpc.TimePeriod, error) {
+	return rpc.TimePeriod{
 		TimeperiodID:   p.TimeperiodID,
 		Period:         Seconds(p.Period).String(),
 		TimeperiodType: string(p.TimeperiodType),
@@ -154,57 +136,20 @@ func toRPCTimePeriod(p TimePeriod) (rpcTimePeriod, error) {
 	}, nil
 }
 
-var selectGroups = []string{"groupid", "name"}
-var selectHosts = []string{"hostid", "name", "maintenance_from",
-	"maintenance_status", "maintenance_type", "maintenanceid"}
-var selectTimeperiods = []string{"timeperiodid", "period", "timeperiod_type",
-	"start_date"}
-
 func (c *myClient) GetMaintenances(ctx context.Context) ([]Maintenance, error) {
-	params := struct {
-		Output            any `json:"output"`
-		SelectGroups      any `json:"selectGroups"`
-		SelectHosts       any `json:"selectHosts"`
-		SelectTimeperiods any `json:"selectTimeperiods"`
-	}{
-		Output:            "extend",
-		SelectGroups:      selectGroups,
-		SelectHosts:       selectHosts,
-		SelectTimeperiods: selectTimeperiods,
-	}
-	var rm []rpcMaintenance
-	if err := c.Client.Call(ctx, "maintenance.get", params, &rm); err != nil {
+	rm, err := c.inner.GetMaintenances(ctx)
+	if err != nil {
 		return nil, err
 	}
-	return FailableMapSlice(rm, toMaintenance)
+	return slicex.FailableMap(rm, fromPRCMaintenance)
 }
 
 func (c *myClient) GetMaintenanceByID(ctx context.Context, maintenanceID string) (*Maintenance, error) {
-	type Filter struct {
-		MaintenanceID []string `json:"maintenanceid"`
-	}
-
-	params := struct {
-		Output            any `json:"output"`
-		SelectGroups      any `json:"selectGroups"`
-		SelectHosts       any `json:"selectHosts"`
-		SelectTimeperiods any `json:"selectTimeperiods"`
-		Filter            any `json:"filter"`
-	}{
-		Output:            "extend",
-		SelectGroups:      selectGroups,
-		SelectHosts:       selectHosts,
-		SelectTimeperiods: selectTimeperiods,
-		Filter:            Filter{MaintenanceID: []string{maintenanceID}},
-	}
-	var rm []rpcMaintenance
-	if err := c.Client.Call(ctx, "maintenance.get", params, &rm); err != nil {
+	rm, err := c.inner.GetMaintenanceByID(ctx, maintenanceID)
+	if err != nil {
 		return nil, err
 	}
-	if len(rm) != 1 {
-		return nil, fmt.Errorf("unexpected maintenance count, got=%d, want=1", len(rm))
-	}
-	m, err := toMaintenance(rm[0])
+	m, err := fromPRCMaintenance(*rm)
 	if err != nil {
 		return nil, err
 	}
@@ -212,31 +157,11 @@ func (c *myClient) GetMaintenanceByID(ctx context.Context, maintenanceID string)
 }
 
 func (c *myClient) GetMaintenanceByNameFullMatch(ctx context.Context, name string) (*Maintenance, error) {
-	type Names struct {
-		Name []string `json:"name"`
-	}
-
-	params := struct {
-		Output            any `json:"output"`
-		SelectGroups      any `json:"selectGroups"`
-		SelectHosts       any `json:"selectHosts"`
-		SelectTimeperiods any `json:"selectTimeperiods"`
-		Filter            any `json:"filter"`
-	}{
-		Output:            "extend",
-		SelectGroups:      selectGroups,
-		SelectHosts:       selectHosts,
-		SelectTimeperiods: selectTimeperiods,
-		Filter:            Names{Name: []string{name}},
-	}
-	var rm []rpcMaintenance
-	if err := c.Client.Call(ctx, "maintenance.get", params, &rm); err != nil {
+	rm, err := c.inner.GetMaintenanceByNameFullMatch(ctx, name)
+	if err != nil {
 		return nil, err
 	}
-	if len(rm) != 1 {
-		return nil, fmt.Errorf("unexpected maintenance count, got=%d, want=1", len(rm))
-	}
-	m, err := toMaintenance(rm[0])
+	m, err := fromPRCMaintenance(*rm)
 	if err != nil {
 		return nil, err
 	}
@@ -244,101 +169,35 @@ func (c *myClient) GetMaintenanceByNameFullMatch(ctx context.Context, name strin
 }
 
 func (c *myClient) CreateMaintenance(ctx context.Context, m *Maintenance) error {
-	type rpcMaintenanceIDs struct {
-		MaintenanceIDs []string `json:"maintenanceids"`
-	}
-
-	var ids rpcMaintenanceIDs
-	if err := c.Client.Call(ctx, "maintenance.create", m, &ids); err != nil {
-		return err
-	}
-	if len(ids.MaintenanceIDs) != 1 {
-		return fmt.Errorf("unexpected ids length: %d", len(ids.MaintenanceIDs))
-	}
-	m.MaintenaceID = ids.MaintenanceIDs[0]
-	return nil
-}
-
-func (c *myClient) UpdateMaintenance(ctx context.Context, m *Maintenance) error {
-	type rpcMaintenanceIDs struct {
-		MaintenanceIDs []string `json:"maintenanceids"`
-	}
-
 	rm, err := toRPCMaintenance(*m)
 	if err != nil {
 		return err
 	}
-	var ids rpcMaintenanceIDs
-	if err := c.Client.Call(ctx, "maintenance.update", rm, &ids); err != nil {
+	if err := c.inner.CreateMaintenance(ctx, &rm); err != nil {
 		return err
 	}
-	if len(ids.MaintenanceIDs) != 1 {
-		return fmt.Errorf("unexpected ids length: %d", len(ids.MaintenanceIDs))
-	}
-	m.MaintenaceID = ids.MaintenanceIDs[0]
+	m.MaintenaceID = rm.MaintenaceID
 	return nil
 }
 
-func (c *myClient) GetMaintenanceIDsByIDs(ctx context.Context, maintenanceIDs []string) ([]string, error) {
-	type rpcFilter struct {
-		MaintenanceID []string `json:"maintenanceid"`
+func (c *myClient) UpdateMaintenance(ctx context.Context, m *Maintenance) error {
+	rm, err := toRPCMaintenance(*m)
+	if err != nil {
+		return err
 	}
+	return c.inner.UpdateMaintenance(ctx, &rm)
+}
 
-	params := struct {
-		Output any `json:"output"`
-		Filter any `json:"filter"`
-	}{
-		Output: "maintenanceid",
-		Filter: rpcFilter{MaintenanceID: maintenanceIDs},
-	}
-	var rm []rpcMaintenance
-	if err := c.Client.Call(ctx, "maintenance.get", params, &rm); err != nil {
-		return nil, err
-	}
-	if len(rm) != len(maintenanceIDs) {
-		return nil, fmt.Errorf("unexpected maintenance count returned by GetMaintenanceIDsByID: got=%d, want=%d", len(rm), len(maintenanceIDs))
-	}
-	ids := MapSlice(rm, func(m rpcMaintenance) string {
-		return m.MaintenaceID
-	})
-	return ids, nil
+func (c *myClient) GetMaintenanceIDsByIDs(ctx context.Context, maintenanceIDs []string) ([]string, error) {
+	return c.inner.GetMaintenanceIDsByIDs(ctx, maintenanceIDs)
 }
 
 func (c *myClient) GetMaintenanceIDsByNamesFullMatch(ctx context.Context, names []string) ([]string, error) {
-	type rpcFilter struct {
-		Name []string `json:"name"`
-	}
-
-	params := struct {
-		Output any `json:"output"`
-		Filter any `json:"filter"`
-	}{
-		Output: "maintenanceid",
-		Filter: rpcFilter{Name: names},
-	}
-	var result []rpcMaintenance
-	if err := c.Client.Call(ctx, "maintenance.get", params, &result); err != nil {
-		return nil, err
-	}
-	if len(result) != len(names) {
-		return nil, fmt.Errorf("unexpected maintenance count returned by GetMaintenanceIDsByNamesFullMatch: got=%d, want=%d", len(result), len(names))
-	}
-	maintenanceIDs := MapSlice(result, func(m rpcMaintenance) string {
-		return m.MaintenaceID
-	})
-	return maintenanceIDs, nil
+	return c.inner.GetMaintenanceIDsByNamesFullMatch(ctx, names)
 }
 
 func (c *myClient) DeleteMaintenancesByIDs(ctx context.Context, ids []string) (deletedIDs []string, err error) {
-	type rpcMaintenanceIDs struct {
-		MaintenanceIDs []string `json:"maintenanceids"`
-	}
-
-	var maintenances rpcMaintenanceIDs
-	if err := c.Client.Call(ctx, "maintenance.delete", ids, &maintenances); err != nil {
-		return nil, err
-	}
-	return maintenances.MaintenanceIDs, nil
+	return c.inner.DeleteMaintenancesByIDs(ctx, ids)
 }
 
 type displayMaintenance struct {
@@ -374,8 +233,8 @@ func toDisplayMaintenance(m Maintenance) displayMaintenance {
 		ActiveTill:   displayTimestamp(m.ActiveTill),
 		Description:  m.Description,
 		Groups:       m.Groups,
-		Hosts:        MapSlice(m.Hosts, toDisplayHost),
-		TimePeriods:  MapSlice(m.TimePeriods, toDisplayTimePeriod),
+		Hosts:        slicex.Map(m.Hosts, toDisplayHost),
+		TimePeriods:  slicex.Map(m.TimePeriods, toDisplayTimePeriod),
 	}
 }
 

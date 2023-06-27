@@ -1,7 +1,7 @@
 package main
 
-import "github.com/hnakamur/go-zabbix"
+import "github.com/hnakamur/go-zabbix/internal/rpc"
 
 type myClient struct {
-	*zabbix.Client
+	inner *rpc.Client
 }

@@ -13,6 +13,8 @@ import (
 	"golang.org/x/exp/slices"
 
 	"github.com/hnakamur/go-zabbix"
+	"github.com/hnakamur/go-zabbix/internal/rpc"
+	"github.com/hnakamur/go-zabbix/internal/slicex"
 	"github.com/urfave/cli/v2"
 )
 
@@ -189,6 +191,23 @@ func main() {
 				},
 				Action: deleteMaintenanceAction,
 			},
+			{
+				Name:  "status",
+				Usage: "show host maintenance statuses for a Zabbix maintenance",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "id",
+						Aliases: []string{"i"},
+						Usage:   "target maintenance ID to delete",
+					},
+					&cli.StringFlag{
+						Name:    "name",
+						Aliases: []string{"n"},
+						Usage:   "name of maintenance to delete",
+					},
+				},
+				Action: showStatusAction,
+			},
 		},
 	}
 
@@ -215,7 +234,7 @@ func createMaintenanceAction(cCtx *cli.Context) error {
 		if err != nil {
 			return err
 		}
-		hostsJustID = MapSlice(hosts, func(h Host) Host {
+		hostsJustID = slicex.Map(hosts, func(h Host) Host {
 			return Host{HostID: h.HostID}
 		})
 	}
@@ -226,7 +245,7 @@ func createMaintenanceAction(cCtx *cli.Context) error {
 		if err != nil {
 			return err
 		}
-		groupsJustID = MapSlice(groups, func(g HostGroup) HostGroup {
+		groupsJustID = slicex.Map(groups, func(g HostGroup) HostGroup {
 			return HostGroup{GroupID: g.GroupID}
 		})
 	}
@@ -301,12 +320,12 @@ func updateMaintenanceAction(cCtx *cli.Context) error {
 			if err != nil {
 				return err
 			}
-			maintenance.Hosts = MapSlice(hosts, func(h Host) Host {
+			maintenance.Hosts = slicex.Map(hosts, func(h Host) Host {
 				return Host{HostID: h.HostID}
 			})
 		}
 	} else {
-		maintenance.Hosts = MapSlice(maintenance.Hosts, func(h Host) Host {
+		maintenance.Hosts = slicex.Map(maintenance.Hosts, func(h Host) Host {
 			return Host{HostID: h.HostID}
 		})
 	}
@@ -319,12 +338,12 @@ func updateMaintenanceAction(cCtx *cli.Context) error {
 			if err != nil {
 				return err
 			}
-			maintenance.Groups = MapSlice(groups, func(g HostGroup) HostGroup {
+			maintenance.Groups = slicex.Map(groups, func(g HostGroup) HostGroup {
 				return HostGroup{GroupID: g.GroupID}
 			})
 		}
 	} else {
-		maintenance.Groups = MapSlice(maintenance.Groups, func(g HostGroup) HostGroup {
+		maintenance.Groups = slicex.Map(maintenance.Groups, func(g HostGroup) HostGroup {
 			return HostGroup{GroupID: g.GroupID}
 		})
 	}
@@ -393,10 +412,10 @@ func deleteMaintenanceAction(cCtx *cli.Context) error {
 	if len(ids) == 0 && len(names) == 0 {
 		return errors.New(`at least one "--name" or "--id" must be set`)
 	}
-	if SliceContainsDup(ids) {
+	if slicex.ContainsDup(ids) {
 		return errors.New(`duplicated IDs are set with "--id"`)
 	}
-	if SliceContainsDup(names) {
+	if slicex.ContainsDup(names) {
 		return errors.New(`duplicated names are set with "--name"`)
 	}
 
@@ -418,12 +437,55 @@ func deleteMaintenanceAction(cCtx *cli.Context) error {
 			return err
 		}
 	}
-	targetIDs := SliceConcatDeDup(idsByIDs, idsByNames)
+	targetIDs := slicex.ConcatDeDup(idsByIDs, idsByNames)
 	deletedIDs, err := client.DeleteMaintenancesByIDs(cCtx.Context, targetIDs)
 	if err != nil {
 		return err
 	}
 	log.Printf("INFO targetIDs=%v, deletedIDs=%v", targetIDs, deletedIDs)
+	return nil
+}
+
+func showStatusAction(cCtx *cli.Context) error {
+	id := cCtx.String("id")
+	name := cCtx.String("name")
+	if (id == "" && name == "") || (id != "" && name != "") {
+		return errors.New(`just one of "--name" or "--id" must be set`)
+	}
+
+	client, err := newClient(cCtx)
+	if err != nil {
+		return err
+	}
+
+	var maintenance *Maintenance
+	if id != "" {
+		maintenance, err = client.GetMaintenanceByID(cCtx.Context, id)
+	} else if name != "" {
+		maintenance, err = client.GetMaintenanceByNameFullMatch(cCtx.Context, name)
+	}
+	if err != nil {
+		return err
+	}
+
+	var hosts []Host
+	hosts = append(hosts, maintenance.Hosts...)
+	if len(maintenance.Groups) != 0 {
+		groupIDs := slicex.Map(maintenance.Groups, func(g HostGroup) string {
+			return g.GroupID
+		})
+		hostsInGroups, err := client.GetHostsByGroupIDs(cCtx.Context, groupIDs)
+		if err != nil {
+			return err
+		}
+		hosts = append(hosts, hostsInGroups...)
+	}
+	slices.SortFunc(hosts, func(h1, h2 Host) bool {
+		return h1.Name < h2.Name
+	})
+
+	log.Printf("INFO maintenance=%+v", maintenance)
+	log.Printf("INFO hosts=%+v", hosts)
 	return nil
 }
 
@@ -447,7 +509,7 @@ func newClient(cCtx *cli.Context) (*myClient, error) {
 		return nil, err
 	}
 
-	client := &myClient{Client: c}
+	client := &myClient{inner: &rpc.Client{Client: c}}
 	if token == "" {
 		if err := login(cCtx, client); err != nil {
 			return nil, err
@@ -473,7 +535,7 @@ func login(cCtx *cli.Context, c *myClient) error {
 		password = string(p)
 	}
 
-	if err := c.Login(cCtx.Context, username, password); err != nil {
+	if err := c.inner.Login(cCtx.Context, username, password); err != nil {
 		return err
 	}
 	return nil

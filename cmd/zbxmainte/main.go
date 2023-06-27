@@ -16,6 +16,8 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+const timeFormatRFC3339Minute = "2006-01-02T15:04"
+
 func main() {
 	app := &cli.App{
 		Name:    "zbxmainte",
@@ -80,21 +82,21 @@ func main() {
 					},
 					&cli.TimestampFlag{
 						Name:     "active-since",
-						Layout:   "2006-01-02T15:04",
+						Layout:   timeFormatRFC3339Minute,
 						Timezone: time.Local,
 						Required: true,
 						Usage:    "active start time of maintenance",
 					},
 					&cli.TimestampFlag{
 						Name:     "active-till",
-						Layout:   "2006-01-02T15:04",
+						Layout:   timeFormatRFC3339Minute,
 						Timezone: time.Local,
 						Required: true,
 						Usage:    "active end time of maintenance",
 					},
 					&cli.TimestampFlag{
 						Name:     "start-date",
-						Layout:   "2006-01-02T15:04",
+						Layout:   timeFormatRFC3339Minute,
 						Timezone: time.Local,
 						Required: true,
 						Usage:    "start time of maintenance",
@@ -381,7 +383,8 @@ func getMaintenancesAction(cCtx *cli.Context) error {
 
 	log.Printf("INFO maintenance count: %d", len(maintenances))
 	for i, m := range maintenances {
-		resultBytes, err := json.Marshal(m)
+		dm := toDisplayMaintenance(m)
+		resultBytes, err := json.Marshal(dm)
 		if err != nil {
 			return err
 		}

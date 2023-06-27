@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hnakamur/go-zabbix"
@@ -331,4 +332,84 @@ func (c *myClient) DeleteMaintenancesByIDs(ctx context.Context, ids []zabbix.ID)
 		return nil, err
 	}
 	return maintenances.MaintenanceIDs, nil
+}
+
+type displayMaintenance struct {
+	MaintenaceID zabbix.ID           `json:"maintenanceid,omitempty"`
+	Name         string              `json:"name,omitempty"`
+	ActiveSince  displayTimestamp    `json:"active_since,omitempty"`
+	ActiveTill   displayTimestamp    `json:"active_till,omitempty"`
+	Description  string              `json:"description,omitempty"`
+	Groups       []HostGroup         `json:"groups"`
+	Hosts        []Host              `json:"hosts"`
+	TimePeriods  []displayTimePeriod `json:"timeperiods,omitempty"`
+}
+
+type displayTimePeriod struct {
+	Period    displayDuration
+	StartDate displayTimestamp
+}
+
+func toDisplayMaintenance(m Maintenance) displayMaintenance {
+	return displayMaintenance{
+		MaintenaceID: m.MaintenaceID,
+		Name:         m.Name,
+		ActiveSince:  displayTimestamp(m.ActiveSince),
+		ActiveTill:   displayTimestamp(m.ActiveTill),
+		Description:  m.Description,
+		Groups:       m.Groups,
+		Hosts:        m.Hosts,
+		TimePeriods:  MapSlice(m.TimePeriods, toDisplayTimePeriod),
+	}
+}
+
+func toDisplayTimePeriod(tp TimePeriod) displayTimePeriod {
+	return displayTimePeriod{
+		Period:    displayDuration(tp.Period),
+		StartDate: displayTimestamp(tp.StartDate),
+	}
+}
+
+// Timestamp is an alias to time.Time. Timestamp is encoded a string whose value
+// is seconds from the Unix epoch time.
+type displayTimestamp time.Time
+
+// MarshalJSON returns a string of seconds from the Unix Epoch time.
+func (t displayTimestamp) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + t.String() + `"`), nil
+}
+
+// UnmarshalJSON reads a string of seconds from the Unix Epoch time.
+func (t *displayTimestamp) UnmarshalJSON(data []byte) error {
+	s := strings.Trim(string(data), `"`)
+	parsed, err := time.Parse(s, timeFormatRFC3339Minute)
+	if err != nil {
+		return err
+	}
+	*t = displayTimestamp(parsed)
+	return nil
+}
+
+func (t displayTimestamp) String() string {
+	return time.Time(t).Format(timeFormatRFC3339Minute)
+}
+
+type displayDuration time.Duration
+
+func (d displayDuration) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + d.String() + `"`), nil
+}
+
+func (d *displayDuration) UnmarshalJSON(data []byte) error {
+	s := strings.Trim(string(data), `"`)
+	parsed, err := time.ParseDuration(s)
+	if err != nil {
+		return err
+	}
+	*d = displayDuration(parsed)
+	return nil
+}
+
+func (d displayDuration) String() string {
+	return time.Duration(d).String()
 }

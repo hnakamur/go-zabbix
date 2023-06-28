@@ -209,10 +209,11 @@ func main() {
 						Aliases: []string{"n"},
 						Usage:   "name of maintenance to delete",
 					},
-					&cli.StringFlag{
+					&cli.GenericFlag{
 						Name:    "wait",
 						Aliases: []string{"w"},
-						Usage:   "wait for all hosts maintenance status to be in effect if 1 is set",
+						Value:   &maintenanceStatusHolder{},
+						Usage:   "wait for all hosts to become specified maintenance status (0=no maintenance, 1=in effect)",
 					},
 					&cli.DurationFlag{
 						Name:  "interval",
@@ -460,6 +461,24 @@ func deleteMaintenanceAction(cCtx *cli.Context) error {
 	return nil
 }
 
+type maintenanceStatusHolder struct {
+	status MaintenanceStatus
+}
+
+func (g *maintenanceStatusHolder) Set(value string) error {
+	switch value {
+	case "", string(MaintenanceStatusNoMaintenance), string(MaintenanceStatusInEffect):
+		g.status = MaintenanceStatus(value)
+		return nil
+	default:
+		return errors.New(`maintenance status must be empty, 0, or 1 (0=no maintenance, 1=in effect)`)
+	}
+}
+
+func (g *maintenanceStatusHolder) String() string {
+	return string(g.status)
+}
+
 func showStatusAction(cCtx *cli.Context) error {
 	id := cCtx.String("id")
 	name := cCtx.String("name")
@@ -500,20 +519,18 @@ func showStatusAction(cCtx *cli.Context) error {
 	log.Printf("INFO maintenance=%+v", maintenance)
 	log.Printf("INFO hosts=%+v", hosts)
 
-	waitStatus := cCtx.String("wait")
+	waitStatus := cCtx.Generic("wait").(*maintenanceStatusHolder).status
+	log.Printf("waitStatus=%s", waitStatus)
+
 	if waitStatus == "" {
 		return nil
-	}
-
-	if waitStatus != string(MaintenanceStatusInEffect) {
-		return fmt.Errorf(`"--wait" must be empty or %q`, string(MaintenanceStatusInEffect))
 	}
 
 	var hostIDs []string
 	interval := cCtx.Duration("interval")
 	var timer *time.Timer
 	for {
-		if Hosts(hosts).allMaintenanceStatusExpected(MaintenanceStatusInEffect) {
+		if Hosts(hosts).allMaintenanceStatusExpected(waitStatus) {
 			log.Print("yes, maintanence status of all hosts is expected")
 			return nil
 		}

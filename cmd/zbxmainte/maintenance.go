@@ -243,7 +243,7 @@ func toDisplayHost(h Host) displayHost {
 		HostID:            h.HostID,
 		Name:              h.Name,
 		MaintenanceFrom:   displayTimestamp(time.Time(h.MaintenanceFrom)),
-		MaintenanceStatus: h.MaintenanceStatus,
+		MaintenanceStatus: string(h.MaintenanceStatus),
 		MaintenanceType:   MaintenanceType(h.MaintenanceType),
 		MaintenanceID:     h.MaintenanceID,
 	}

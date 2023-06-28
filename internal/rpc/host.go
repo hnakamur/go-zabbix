@@ -38,6 +38,22 @@ func (c *Client) GetHostsByNamesFullMatch(ctx context.Context,
 	return hosts, nil
 }
 
+func (c *Client) GetHostsByHostIDs(ctx context.Context,
+	hostIDs []string) ([]Host, error) {
+	params := struct {
+		Output  any `json:"output"`
+		HostIDs any `json:"hostids"`
+	}{
+		Output:  selectHosts,
+		HostIDs: hostIDs,
+	}
+	var hosts []Host
+	if err := c.Client.Call(ctx, "host.get", params, &hosts); err != nil {
+		return nil, err
+	}
+	return hosts, nil
+}
+
 func (c *Client) GetHostsByGroupIDs(ctx context.Context,
 	groupIDs []string) ([]Host, error) {
 	params := struct {

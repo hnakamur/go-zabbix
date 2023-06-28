@@ -59,6 +59,10 @@ func main() {
 				Name:  "debug",
 				Usage: "print JSON-RPC requests and responses",
 			},
+			&cli.BoolFlag{
+				Name:  "verbose",
+				Usage: "verbose output",
+			},
 		},
 		Commands: []*cli.Command{
 			{
@@ -204,6 +208,17 @@ func main() {
 						Name:    "name",
 						Aliases: []string{"n"},
 						Usage:   "name of maintenance to delete",
+					},
+					&cli.GenericFlag{
+						Name:    "wait",
+						Aliases: []string{"w"},
+						Value:   &maintenanceStatusHolder{},
+						Usage:   "wait for all hosts to become specified maintenance status (0=no maintenance, 1=in effect)",
+					},
+					&cli.DurationFlag{
+						Name:  "interval",
+						Value: 30 * time.Second,
+						Usage: "polling interval",
 					},
 				},
 				Action: showStatusAction,
@@ -446,6 +461,24 @@ func deleteMaintenanceAction(cCtx *cli.Context) error {
 	return nil
 }
 
+type maintenanceStatusHolder struct {
+	status MaintenanceStatus
+}
+
+func (g *maintenanceStatusHolder) Set(value string) error {
+	switch value {
+	case "", string(MaintenanceStatusNoMaintenance), string(MaintenanceStatusInEffect):
+		g.status = MaintenanceStatus(value)
+		return nil
+	default:
+		return errors.New(`maintenance status must be empty, 0, or 1 (0=no maintenance, 1=in effect)`)
+	}
+}
+
+func (g *maintenanceStatusHolder) String() string {
+	return string(g.status)
+}
+
 func showStatusAction(cCtx *cli.Context) error {
 	id := cCtx.String("id")
 	name := cCtx.String("name")
@@ -469,8 +502,9 @@ func showStatusAction(cCtx *cli.Context) error {
 	}
 
 	var hosts []Host
-	hosts = append(hosts, maintenance.Hosts...)
-	if len(maintenance.Groups) != 0 {
+	if len(maintenance.Groups) == 0 {
+		hosts = concatHostsDeDup(maintenance.Hosts)
+	} else {
 		groupIDs := slicex.Map(maintenance.Groups, func(g HostGroup) string {
 			return g.GroupID
 		})
@@ -478,15 +512,53 @@ func showStatusAction(cCtx *cli.Context) error {
 		if err != nil {
 			return err
 		}
-		hosts = append(hosts, hostsInGroups...)
+		hosts = concatHostsDeDup(maintenance.Hosts, hostsInGroups)
 	}
-	slices.SortFunc(hosts, func(h1, h2 Host) bool {
-		return h1.Name < h2.Name
-	})
+	sortHosts(hosts)
 
 	log.Printf("INFO maintenance=%+v", maintenance)
 	log.Printf("INFO hosts=%+v", hosts)
-	return nil
+
+	waitStatus := cCtx.Generic("wait").(*maintenanceStatusHolder).status
+	log.Printf("waitStatus=%s", waitStatus)
+
+	if waitStatus == "" {
+		return nil
+	}
+
+	var hostIDs []string
+	interval := cCtx.Duration("interval")
+	var timer *time.Timer
+	for {
+		if Hosts(hosts).allMaintenanceStatusExpected(waitStatus) {
+			log.Print("yes, maintanence status of all hosts is expected")
+			return nil
+		}
+
+		if timer == nil {
+			timer = time.NewTimer(interval)
+			defer timer.Stop()
+		} else {
+			timer.Reset(interval)
+		}
+		log.Print("waiting for maintenance statuses change in all hosts...")
+		select {
+		case <-cCtx.Context.Done():
+			return nil
+		case <-timer.C:
+		}
+
+		if hostIDs == nil {
+			hostIDs = slicex.Map(hosts, func(h Host) string {
+				return h.HostID
+			})
+		}
+		hosts, err = client.GetHostsByHostIDs(cCtx.Context, hostIDs)
+		if err != nil {
+			return err
+		}
+		log.Printf("hosts=%+v", hosts)
+	}
 }
 
 func newClient(cCtx *cli.Context) (*myClient, error) {

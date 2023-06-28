@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"runtime/debug"
@@ -69,7 +70,7 @@ func run(args []string) error {
 			},
 			&cli.GenericFlag{
 				Name:    "log-flags",
-				Value:   &logFlagsValue{},
+				Value:   &logFlagsValue{flags: log.LstdFlags},
 				Usage:   "flags for logger",
 				EnvVars: []string{"ZBX_LOG_FLAGS"},
 			},
@@ -260,7 +261,7 @@ type logFlagsValue struct {
 func (v *logFlagsValue) Set(value string) error {
 	flags, err := outlog.ParseLogFlags(value)
 	if err != nil {
-		return errors.New(`must be "stdFlags", "date", "time", "microseconds", "longfile", "UTC", "msgprefix", or combination of them with "|"`)
+		return err
 	}
 	v.flags = flags
 	return nil

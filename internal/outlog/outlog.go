@@ -1,6 +1,7 @@
 package outlog
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -27,6 +28,9 @@ func SetOutput(w io.Writer) {
 }
 
 func ParseLogFlags(s string) (int, error) {
+	if s == "" {
+		return 0, nil
+	}
 	var flags int
 	words := strings.Split(s, "|")
 	for _, word := range words {
@@ -48,6 +52,8 @@ func ParseLogFlags(s string) (int, error) {
 			flags |= log.Lmsgprefix
 		case "stdFlags":
 			flags |= log.LstdFlags
+		default:
+			return 0, errors.New(`must be "stdFlags", "date", "time", "microseconds", "longfile", "shortfile", "UTC", "msgprefix", or combination of them with "|"`)
 		}
 	}
 	return flags, nil
@@ -68,16 +74,18 @@ func (f LogFlags) String() string {
 		{flag: log.Ltime, name: "time"},
 		{flag: log.Lmicroseconds, name: "microseconds"},
 		{flag: log.Llongfile, name: "longfile"},
+		{flag: log.Lshortfile, name: "shortfile"},
 		{flag: log.LUTC, name: "UTC"},
 		{flag: log.Lmsgprefix, name: "msgprefix"},
 	}
 	rest := int(f)
 	for _, t := range flagsTable {
-		if rest&t.flag != 0 {
+		if rest&t.flag == t.flag {
 			if b.Len() > 0 {
 				b.WriteByte('|')
 			}
 			b.WriteString(t.name)
+			rest ^= t.flag
 		}
 	}
 	return b.String()

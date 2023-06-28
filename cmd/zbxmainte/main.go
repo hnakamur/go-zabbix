@@ -212,7 +212,7 @@ func main() {
 					&cli.GenericFlag{
 						Name:    "wait",
 						Aliases: []string{"w"},
-						Value:   &maintenanceStatusHolder{},
+						Value:   &statusWaitFlagValue{},
 						Usage:   "wait for all hosts to become specified maintenance status (0=no maintenance, 1=in effect)",
 					},
 					&cli.DurationFlag{
@@ -461,21 +461,21 @@ func deleteMaintenanceAction(cCtx *cli.Context) error {
 	return nil
 }
 
-type maintenanceStatusHolder struct {
+type statusWaitFlagValue struct {
 	status MaintenanceStatus
 }
 
-func (g *maintenanceStatusHolder) Set(value string) error {
+func (g *statusWaitFlagValue) Set(value string) error {
 	switch value {
-	case "", string(MaintenanceStatusNoMaintenance), string(MaintenanceStatusInEffect):
+	case "", string(MaintenanceStatusInEffect):
 		g.status = MaintenanceStatus(value)
 		return nil
 	default:
-		return errors.New(`maintenance status must be empty, 0, or 1 (0=no maintenance, 1=in effect)`)
+		return errors.New(`must be empty or 1 (empty=no wait, 1=wait for maintenance in effect)`)
 	}
 }
 
-func (g *maintenanceStatusHolder) String() string {
+func (g *statusWaitFlagValue) String() string {
 	return string(g.status)
 }
 
@@ -519,7 +519,7 @@ func showStatusAction(cCtx *cli.Context) error {
 	log.Printf("INFO maintenance=%+v", maintenance)
 	log.Printf("INFO hosts=%+v", hosts)
 
-	waitStatus := cCtx.Generic("wait").(*maintenanceStatusHolder).status
+	waitStatus := cCtx.Generic("wait").(*statusWaitFlagValue).status
 	log.Printf("waitStatus=%s", waitStatus)
 
 	if waitStatus == "" {

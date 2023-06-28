@@ -71,7 +71,7 @@ func run(args []string) error {
 			&cli.GenericFlag{
 				Name:    "log-flags",
 				Value:   &logFlagsValue{flags: log.LstdFlags},
-				Usage:   "flags for logger",
+				Usage:   "flags for logger (no prefix it set to empty)",
 				EnvVars: []string{"ZBX_LOG_FLAGS"},
 			},
 		},

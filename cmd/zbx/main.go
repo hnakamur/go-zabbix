@@ -224,11 +224,10 @@ func run(args []string) error {
 								Aliases: []string{"n"},
 								Usage:   "name of maintenance",
 							},
-							&cli.GenericFlag{
+							&cli.BoolFlag{
 								Name:    "wait",
 								Aliases: []string{"w"},
-								Value:   &statusWaitFlagValue{},
-								Usage:   "wait for all hosts to become specified maintenance status (0=no maintenance, 1=in effect)",
+								Usage:   "wait for all hosts to in maintenance effect status",
 							},
 							&cli.DurationFlag{
 								Name:  "interval",
@@ -501,24 +500,6 @@ func deleteMaintenanceAction(cCtx *cli.Context) error {
 	return nil
 }
 
-type statusWaitFlagValue struct {
-	status MaintenanceStatus
-}
-
-func (g *statusWaitFlagValue) Set(value string) error {
-	switch value {
-	case "", string(MaintenanceStatusInEffect):
-		g.status = MaintenanceStatus(value)
-		return nil
-	default:
-		return errors.New(`must be empty or 1 (empty=no wait, 1=wait for maintenance in effect)`)
-	}
-}
-
-func (g *statusWaitFlagValue) String() string {
-	return string(g.status)
-}
-
 func showStatusAction(cCtx *cli.Context) error {
 	id := cCtx.String("id")
 	name := cCtx.String("name")
@@ -556,11 +537,25 @@ func showStatusAction(cCtx *cli.Context) error {
 	}
 	sortHosts(hosts)
 
-	outlog.Printf("INFO maintenance=%+v", maintenance)
-	outlog.Printf("INFO hosts=%+v", hosts)
+	{
+		maintenanceBytes, err := json.Marshal(maintenance)
+		if err != nil {
+			panic(err)
+		}
+		outlog.Printf("INFO maintenance=%s", string(maintenanceBytes))
+	}
 
-	waitStatus := cCtx.Generic("wait").(*statusWaitFlagValue).status
-	if waitStatus == "" {
+	logHosts := func(hosts []Host) {
+		hostsBytes, err := json.Marshal(hosts)
+		if err != nil {
+			panic(err)
+		}
+		outlog.Printf("INFO hosts=%s", string(hostsBytes))
+
+	}
+	logHosts(hosts)
+
+	if !cCtx.Bool("wait") {
 		return nil
 	}
 
@@ -568,9 +563,9 @@ func showStatusAction(cCtx *cli.Context) error {
 	interval := cCtx.Duration("interval")
 	var timer *time.Timer
 	for {
-		if Hosts(hosts).allMaintenanceStatusExpected(waitStatus) {
-			outlog.Printf("INFO maintanence status of all hosts are expected")
-			outlog.Printf("INFO hosts=%+v", hosts)
+		if Hosts(hosts).allMaintenanceStatusExpected(MaintenanceStatusInEffect) {
+			outlog.Printf("INFO all hosts in specified maintenance become in effect status")
+			logHosts(hosts)
 			return nil
 		}
 

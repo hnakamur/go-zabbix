@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/url"
 	"os"
 	"runtime/debug"
@@ -13,6 +12,8 @@ import (
 	"golang.org/x/exp/slices"
 
 	"github.com/hnakamur/go-zabbix"
+	"github.com/hnakamur/go-zabbix/internal/errlog"
+	"github.com/hnakamur/go-zabbix/internal/outlog"
 	"github.com/hnakamur/go-zabbix/internal/rpc"
 	"github.com/hnakamur/go-zabbix/internal/slicex"
 	"github.com/urfave/cli/v2"
@@ -21,6 +22,13 @@ import (
 const timeFormatRFC3339Minute = "2006-01-02T15:04"
 
 func main() {
+	if err := run(os.Args); err != nil {
+		errlog.Printf("ERROR %s", err)
+		os.Exit(1)
+	}
+}
+
+func run(args []string) error {
 	app := &cli.App{
 		Name:    "zbxmainte",
 		Usage:   "create, get, update, or detele Zabbix maintenance",
@@ -59,9 +67,11 @@ func main() {
 				Name:  "debug",
 				Usage: "print JSON-RPC requests and responses",
 			},
-			&cli.BoolFlag{
-				Name:  "verbose",
-				Usage: "verbose output",
+			&cli.GenericFlag{
+				Name:    "log-flags",
+				Value:   &logFlagsValue{},
+				Usage:   "flags for logger",
+				EnvVars: []string{"ZBX_LOG_FLAGS"},
 			},
 		},
 		Commands: []*cli.Command{
@@ -224,11 +234,34 @@ func main() {
 				Action: showStatusAction,
 			},
 		},
+		Before: func(cCtx *cli.Context) error {
+			logFlags := cCtx.Generic("log-flags").(*logFlagsValue).flags
+			outlog.SetFlags(logFlags)
+			outlog.SetOutput(cCtx.App.Writer)
+			errlog.SetFlags(logFlags)
+			errlog.SetOutput(cCtx.App.ErrWriter)
+			return nil
+		},
 	}
 
-	if err := app.Run(os.Args); err != nil {
-		log.Fatalf("ERROR %s", err)
+	return app.Run(args)
+}
+
+type logFlagsValue struct {
+	flags int
+}
+
+func (v *logFlagsValue) Set(value string) error {
+	flags, err := outlog.ParseLogFlags(value)
+	if err != nil {
+		return errors.New(`must be "stdFlags", "date", "time", "microseconds", "longfile", "UTC", "msgprefix", or combination of them with "|"`)
 	}
+	v.flags = flags
+	return nil
+}
+
+func (v *logFlagsValue) String() string {
+	return outlog.LogFlags(v.flags).String()
 }
 
 func createMaintenanceAction(cCtx *cli.Context) error {
@@ -290,7 +323,7 @@ func createMaintenanceAction(cCtx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("INFO created maintenance, url: %s", u.String())
+	outlog.Printf("INFO created maintenance, url: %s", u.String())
 
 	return nil
 }
@@ -390,7 +423,7 @@ func updateMaintenanceAction(cCtx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("INFO updated maintenance, url: %s", u.String())
+	outlog.Printf("INFO updated maintenance, url: %s", u.String())
 
 	return nil
 }
@@ -409,14 +442,14 @@ func getMaintenancesAction(cCtx *cli.Context) error {
 		return a.MaintenaceID < b.MaintenaceID
 	})
 
-	log.Printf("INFO maintenance count: %d", len(maintenances))
+	outlog.Printf("INFO maintenance count: %d", len(maintenances))
 	for i, m := range maintenances {
 		dm := toDisplayMaintenance(m)
 		resultBytes, err := json.Marshal(dm)
 		if err != nil {
 			return err
 		}
-		log.Printf("INFO maintenance i=%d, %s", i, string(resultBytes))
+		outlog.Printf("INFO maintenance i=%d, %s", i, string(resultBytes))
 	}
 	return nil
 }
@@ -457,7 +490,7 @@ func deleteMaintenanceAction(cCtx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("INFO targetIDs=%v, deletedIDs=%v", targetIDs, deletedIDs)
+	outlog.Printf("INFO targetIDs=%v, deletedIDs=%v", targetIDs, deletedIDs)
 	return nil
 }
 
@@ -516,12 +549,10 @@ func showStatusAction(cCtx *cli.Context) error {
 	}
 	sortHosts(hosts)
 
-	log.Printf("INFO maintenance=%+v", maintenance)
-	log.Printf("INFO hosts=%+v", hosts)
+	outlog.Printf("INFO maintenance=%+v", maintenance)
+	outlog.Printf("INFO hosts=%+v", hosts)
 
 	waitStatus := cCtx.Generic("wait").(*statusWaitFlagValue).status
-	log.Printf("waitStatus=%s", waitStatus)
-
 	if waitStatus == "" {
 		return nil
 	}
@@ -531,7 +562,8 @@ func showStatusAction(cCtx *cli.Context) error {
 	var timer *time.Timer
 	for {
 		if Hosts(hosts).allMaintenanceStatusExpected(waitStatus) {
-			log.Print("yes, maintanence status of all hosts is expected")
+			outlog.Printf("INFO maintanence status of all hosts are expected")
+			outlog.Printf("INFO hosts=%+v", hosts)
 			return nil
 		}
 
@@ -541,7 +573,7 @@ func showStatusAction(cCtx *cli.Context) error {
 		} else {
 			timer.Reset(interval)
 		}
-		log.Print("waiting for maintenance statuses change in all hosts...")
+		outlog.Print("waiting for maintenance statuses change in all hosts...")
 		select {
 		case <-cCtx.Context.Done():
 			return nil
@@ -557,7 +589,6 @@ func showStatusAction(cCtx *cli.Context) error {
 		if err != nil {
 			return err
 		}
-		log.Printf("hosts=%+v", hosts)
 	}
 }
 

@@ -83,3 +83,43 @@ https://www.zabbix.com/documentation/current/en/manual/quickstart/login#:~:text=
 
 * Administrator username: Admin
 * Initial password:       zabbix
+
+## Add group hosts and hosts
+
+lxc project create zabbix --config features.images=false --config features.profiles=false
+lxc stop zabbix
+lxc move zabbix zabbix --project default --target-project zabbix
+
+lxc project switch zabbix
+
+CLIENTS=$(echo sv0{1,2}-grp{1,2} | tr ' ' '\n')
+
+echo "$CLIENTS" | xargs -I % -P 0 lxc launch ubuntu:22.04 %
+
+ZBX_SERVER_IP=$(lxc info zabbix | sed -n '/^ *eth0:$/,/^ *inet:/{/^ *inet:/{s/^ *inet: *\([^/]*\).*/\1/;p}}')
+cat <<EOF > zabbix_server.conf
+Server=$ZBX_SERVER_IP
+ServerActive=$ZBX_SERVER_IP
+EOF
+
+cat <<EOF > setup_zabbix_client.sh
+#!/bin/bash
+curl -sSLO https://repo.zabbix.com/zabbix/6.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_6.0-4+ubuntu22.04_all.deb
+dpkg -i zabbix-release_6.0-4+ubuntu22.04_all.deb
+apt-get update
+rm zabbix-release_6.0-4+ubuntu22.04_all.deb
+apt-get -y install zabbix-agent
+EOF
+
+chmod +x setup_zabbix_client.sh
+
+lxc file push setup_zabbix_client.sh sv01-grp1/usr/local/sbin/
+lxc exec sv01-grp1 -- /usr/local/sbin/setup_zabbix_client.sh
+
+lxc file push zabbix_server.conf sv01-grp1//etc/zabbix/zabbix_agentd.d/
+
+echo "$CLIENTS" | xargs -I % -P 0 lxc file push setup_zabbix_client.sh %/usr/local/sbin/
+echo "$CLIENTS" | xargs -I % -P 0 lxc exec % -- /usr/local/sbin/setup_zabbix_client.sh
+
+echo "$CLIENTS" | xargs -I % -P 0 lxc file push zabbix_server.conf %/etc/zabbix/zabbix_agentd.d/
+echo "$CLIENTS" | xargs -I % -P 0 lxc exec % -- systemctl restart zabbix-agent

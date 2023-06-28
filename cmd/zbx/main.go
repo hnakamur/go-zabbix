@@ -538,7 +538,7 @@ func showStatusAction(cCtx *cli.Context) error {
 	sortHosts(hosts)
 
 	{
-		maintenanceBytes, err := json.Marshal(maintenance)
+		maintenanceBytes, err := json.Marshal(toDisplayMaintenance(*maintenance))
 		if err != nil {
 			panic(err)
 		}
@@ -546,7 +546,7 @@ func showStatusAction(cCtx *cli.Context) error {
 	}
 
 	logHosts := func(hosts []Host) {
-		hostsBytes, err := json.Marshal(hosts)
+		hostsBytes, err := json.Marshal(slicex.Map(hosts, toDisplayHost))
 		if err != nil {
 			panic(err)
 		}

@@ -1,4 +1,4 @@
-# zbxmainte
+# zbx
 
 A command line tool to create, update, or delete a Zabbix maintenance.
 

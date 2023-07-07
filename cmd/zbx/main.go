@@ -109,22 +109,19 @@ func run(args []string) error {
 								Name:     "active-since",
 								Layout:   timeFormatRFC3339Minute,
 								Timezone: time.Local,
-								Required: true,
-								Usage:    "active start time of maintenance",
+								Usage:    `active start time of maintenance (default: same as "--start-date")`,
 							},
 							&cli.TimestampFlag{
 								Name:     "active-till",
 								Layout:   timeFormatRFC3339Minute,
 								Timezone: time.Local,
-								Required: true,
-								Usage:    "active end time of maintenance",
+								Usage:    `active end time of maintenance (default: "--start-date" + "--period")`,
 							},
 							&cli.TimestampFlag{
 								Name:     "start-date",
 								Layout:   timeFormatRFC3339Minute,
 								Timezone: time.Local,
-								Required: true,
-								Usage:    "start time of maintenance",
+								Usage:    "start time of maintenance (default: now)",
 							},
 							&cli.DurationFlag{
 								Name:     "period",
@@ -304,10 +301,28 @@ func createMaintenanceAction(cCtx *cli.Context) error {
 		})
 	}
 
+	period := cCtx.Duration("period")
+	startDate := cCtx.Timestamp("start-date")
+	if startDate == nil {
+		now := time.Now().Truncate(time.Minute)
+		startDate = &now
+	}
+
+	activeSince := cCtx.Timestamp("active-since")
+	if activeSince == nil {
+		activeSince = startDate
+	}
+
+	activeTill := cCtx.Timestamp("active-till")
+	if activeTill == nil {
+		endDate := startDate.Add(period)
+		activeTill = &endDate
+	}
+
 	maintenance := &Maintenance{
 		Name:           cCtx.String("name"),
-		ActiveSince:    *cCtx.Timestamp("active-since"),
-		ActiveTill:     *cCtx.Timestamp("active-till"),
+		ActiveSince:    *activeSince,
+		ActiveTill:     *activeTill,
 		Description:    cCtx.String("desc"),
 		MaintenaceType: MaintenanceTypeWithData,
 		TagsEvalType:   TagsEvalTypeAndOr,
@@ -315,9 +330,9 @@ func createMaintenanceAction(cCtx *cli.Context) error {
 		Hosts:          hostsJustID,
 		TimePeriods: []TimePeriod{
 			{
-				Period:         cCtx.Duration("period"),
+				Period:         period,
 				TimeperiodType: TimeperiodTypeOnetimeOnly,
-				StartDate:      *cCtx.Timestamp("start-date"),
+				StartDate:      *startDate,
 			},
 		},
 	}

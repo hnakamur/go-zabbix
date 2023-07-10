@@ -129,6 +129,16 @@ func run(args []string) error {
 								Required: true,
 								Usage:    "duration of maintenance",
 							},
+							&cli.BoolFlag{
+								Name:    "wait",
+								Aliases: []string{"w"},
+								Usage:   "wait for all hosts to in maintenance effect status",
+							},
+							&cli.DurationFlag{
+								Name:  "interval",
+								Value: 30 * time.Second,
+								Usage: "polling interval",
+							},
 						},
 						Action: createMaintenanceAction,
 					},
@@ -192,6 +202,16 @@ func run(args []string) error {
 								Name:    "period",
 								Aliases: []string{"p"},
 								Usage:   "duration of maintenance",
+							},
+							&cli.BoolFlag{
+								Name:    "wait",
+								Aliases: []string{"w"},
+								Usage:   "wait for all hosts to in maintenance effect status",
+							},
+							&cli.DurationFlag{
+								Name:  "interval",
+								Value: 30 * time.Second,
+								Usage: "polling interval",
 							},
 						},
 						Action: updateMaintenanceAction,
@@ -352,6 +372,16 @@ func createMaintenanceAction(cCtx *cli.Context) error {
 	}
 	outlog.Printf("INFO created maintenance, url: %s", u.String())
 
+	if cCtx.Bool("wait") {
+		hosts, err := getHostsInMaintenance(cCtx, client, maintenance)
+		if err != nil {
+			return err
+		}
+		if err := waitForHostsMaintenanceInEffect(cCtx, client, hosts); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -436,6 +466,16 @@ func updateMaintenanceAction(cCtx *cli.Context) error {
 	}
 	outlog.Printf("INFO updated maintenance, url: %s", u.String())
 
+	if cCtx.Bool("wait") {
+		hosts, err := getHostsInMaintenance(cCtx, client, maintenance)
+		if err != nil {
+			return err
+		}
+		if err := waitForHostsMaintenanceInEffect(cCtx, client, hosts); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -515,6 +555,30 @@ func showStatusAction(cCtx *cli.Context) error {
 		return err
 	}
 
+	hosts, err := getHostsInMaintenance(cCtx, client, maintenance)
+	if err != nil {
+		return err
+	}
+
+	if mainteBytes, err := json.Marshal(toDisplayMaintenance(*maintenance)); err != nil {
+		return err
+	} else {
+		outlog.Printf("INFO maintenance=%s", string(mainteBytes))
+	}
+
+	if err := logHosts(hosts); err != nil {
+		return err
+	}
+
+	if cCtx.Bool("wait") {
+		if err := waitForHostsMaintenanceInEffect(cCtx, client, hosts); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func getHostsInMaintenance(cCtx *cli.Context, client *myClient, maintenance *Maintenance) ([]Host, error) {
 	var hosts []Host
 	if len(maintenance.Groups) == 0 {
 		hosts = concatHostsDeDup(maintenance.Hosts)
@@ -524,41 +588,33 @@ func showStatusAction(cCtx *cli.Context) error {
 		})
 		hostsInGroups, err := client.GetHostsByGroupIDs(cCtx.Context, groupIDs)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		hosts = concatHostsDeDup(maintenance.Hosts, hostsInGroups)
 	}
 	sortHosts(hosts)
+	return hosts, nil
+}
 
-	{
-		maintenanceBytes, err := json.Marshal(toDisplayMaintenance(*maintenance))
-		if err != nil {
-			panic(err)
-		}
-		outlog.Printf("INFO maintenance=%s", string(maintenanceBytes))
+func logHosts(hosts []Host) error {
+	hostsBytes, err := json.Marshal(slicex.Map(hosts, toDisplayHost))
+	if err != nil {
+		return err
 	}
+	outlog.Printf("INFO hosts=%s", string(hostsBytes))
+	return nil
+}
 
-	logHosts := func(hosts []Host) {
-		hostsBytes, err := json.Marshal(slicex.Map(hosts, toDisplayHost))
-		if err != nil {
-			panic(err)
-		}
-		outlog.Printf("INFO hosts=%s", string(hostsBytes))
-
-	}
-	logHosts(hosts)
-
-	if !cCtx.Bool("wait") {
-		return nil
-	}
-
+func waitForHostsMaintenanceInEffect(cCtx *cli.Context, client *myClient, hosts []Host) error {
 	var hostIDs []string
 	interval := cCtx.Duration("interval")
 	var timer *time.Timer
 	for {
 		if Hosts(hosts).allMaintenanceStatusExpected(MaintenanceStatusInEffect) {
 			outlog.Printf("INFO all hosts in specified maintenance become in effect status")
-			logHosts(hosts)
+			if err := logHosts(hosts); err != nil {
+				return err
+			}
 			return nil
 		}
 
@@ -580,6 +636,7 @@ func showStatusAction(cCtx *cli.Context) error {
 				return h.HostID
 			})
 		}
+		var err error
 		hosts, err = client.GetHostsByHostIDs(cCtx.Context, hostIDs)
 		if err != nil {
 			return err

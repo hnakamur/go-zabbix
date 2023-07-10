@@ -144,12 +144,16 @@ func run(args []string) error {
 							&cli.StringFlag{
 								Name:    "id",
 								Aliases: []string{"i"},
-								Usage:   "target maintenance ID (name is used for specifying target if empty)",
+								Usage:   `target maintenance ID (if empty, "--name" is used)`,
 							},
 							&cli.StringFlag{
 								Name:    "name",
 								Aliases: []string{"n"},
-								Usage:   `name of target maintenance, or rename maintenance (when "--id" is set)`,
+								Usage:   `target maintenance name (used only if "--id" is not set)`,
+							},
+							&cli.StringFlag{
+								Name:  "new-name",
+								Usage: `rename maintenance to this name`,
 							},
 							&cli.StringFlag{
 								Name:    "desc",
@@ -199,12 +203,12 @@ func run(args []string) error {
 							&cli.StringSliceFlag{
 								Name:    "id",
 								Aliases: []string{"i"},
-								Usage:   "target maintenance ID",
+								Usage:   `target maintenance(s) ID (can be mixed with "--name"(s))`,
 							},
 							&cli.StringSliceFlag{
 								Name:    "name",
 								Aliases: []string{"n"},
-								Usage:   "name of maintenance",
+								Usage:   `target maintenance(s) name (can be mixed with "--id"(s))`,
 							},
 						},
 						Action: deleteMaintenanceAction,
@@ -216,12 +220,12 @@ func run(args []string) error {
 							&cli.StringFlag{
 								Name:    "id",
 								Aliases: []string{"i"},
-								Usage:   "target maintenance ID",
+								Usage:   `target maintenance ID (if empty, "--name" is used)`,
 							},
 							&cli.StringFlag{
 								Name:    "name",
 								Aliases: []string{"n"},
-								Usage:   "name of maintenance",
+								Usage:   `target maintenance name (used only if "--id" is not set)`,
 							},
 							&cli.BoolFlag{
 								Name:    "wait",
@@ -352,38 +356,19 @@ func createMaintenanceAction(cCtx *cli.Context) error {
 }
 
 func updateMaintenanceAction(cCtx *cli.Context) error {
-	hostNames := cCtx.StringSlice("host")
-	groupNames := cCtx.StringSlice("group")
-
 	client, err := newClient(cCtx)
 	if err != nil {
 		return err
 	}
-
-	maintenanceID := cCtx.String("id")
-	name := cCtx.String("name")
-
-	var maintenance *Maintenance
-	if maintenanceID != "" {
-		maintenance, err = client.GetMaintenanceByID(cCtx.Context, maintenanceID)
-		if err != nil {
-			return err
-		}
-
-		if name != "" {
-			maintenance.Name = name
-		}
-	} else {
-		maintenance, err = client.GetMaintenanceByNameFullMatch(cCtx.Context, name)
-		if err != nil {
-			return err
-		}
+	maintenance, err := getTargetMaintenance(cCtx, client)
+	if err != nil {
+		return err
 	}
 	if len(maintenance.TimePeriods) != 1 {
 		return fmt.Errorf("unsupported TimePeriod count: got=%d, want=1", len(maintenance.TimePeriods))
 	}
 
-	if len(hostNames) > 0 {
+	if hostNames := cCtx.StringSlice("host"); len(hostNames) > 0 {
 		if len(hostNames) == 1 && hostNames[0] == "" {
 			maintenance.Hosts = []Host{}
 		} else {
@@ -401,7 +386,7 @@ func updateMaintenanceAction(cCtx *cli.Context) error {
 		})
 	}
 
-	if len(groupNames) > 0 {
+	if groupNames := cCtx.StringSlice("group"); len(groupNames) > 0 {
 		if len(groupNames) == 1 && groupNames[0] == "" {
 			maintenance.Groups = []HostGroup{}
 		} else {
@@ -419,6 +404,9 @@ func updateMaintenanceAction(cCtx *cli.Context) error {
 		})
 	}
 
+	if s := cCtx.String("new-name"); s != "" {
+		maintenance.Name = s
+	}
 	if s := cCtx.String("desc"); s != "" {
 		maintenance.Description = s
 	}
@@ -518,23 +506,11 @@ func deleteMaintenanceAction(cCtx *cli.Context) error {
 }
 
 func showStatusAction(cCtx *cli.Context) error {
-	id := cCtx.String("id")
-	name := cCtx.String("name")
-	if (id == "" && name == "") || (id != "" && name != "") {
-		return errors.New(`just one of "--name" or "--id" must be set`)
-	}
-
 	client, err := newClient(cCtx)
 	if err != nil {
 		return err
 	}
-
-	var maintenance *Maintenance
-	if id != "" {
-		maintenance, err = client.GetMaintenanceByID(cCtx.Context, id)
-	} else if name != "" {
-		maintenance, err = client.GetMaintenanceByNameFullMatch(cCtx.Context, name)
-	}
+	maintenance, err := getTargetMaintenance(cCtx, client)
 	if err != nil {
 		return err
 	}
@@ -639,6 +615,26 @@ func newClient(cCtx *cli.Context) (*myClient, error) {
 	}
 
 	return client, nil
+}
+
+func getTargetMaintenance(cCtx *cli.Context, client *myClient) (*Maintenance, error) {
+	id := cCtx.String("id")
+	name := cCtx.String("name")
+	if (id == "" && name == "") || (id != "" && name != "") {
+		return nil, errors.New(`just one of "--name" or "--id" must be set`)
+	}
+
+	var maintenance *Maintenance
+	var err error
+	if id != "" {
+		maintenance, err = client.GetMaintenanceByID(cCtx.Context, id)
+	} else if name != "" {
+		maintenance, err = client.GetMaintenanceByNameFullMatch(cCtx.Context, name)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return maintenance, nil
 }
 
 func login(cCtx *cli.Context, c *myClient) error {

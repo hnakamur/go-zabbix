@@ -125,6 +125,7 @@ func run(args []string) error {
 							},
 							&cli.DurationFlag{
 								Name:     "period",
+								Aliases:  []string{"p"},
 								Required: true,
 								Usage:    "duration of maintenance",
 							},
@@ -184,8 +185,9 @@ func run(args []string) error {
 								Usage:    "start time of maintenance",
 							},
 							&cli.DurationFlag{
-								Name:  "period",
-								Usage: "duration of maintenance",
+								Name:    "period",
+								Aliases: []string{"p"},
+								Usage:   "duration of maintenance",
 							},
 						},
 						Action: updateMaintenanceAction,

@@ -2,6 +2,9 @@ package rpc
 
 import (
 	"context"
+	"fmt"
+	"slices"
+	"strings"
 )
 
 type Host struct {
@@ -35,6 +38,18 @@ func (c *Client) GetHostsByNamesFullMatch(ctx context.Context,
 	if err := c.Client.Call(ctx, "host.get", params, &hosts); err != nil {
 		return nil, err
 	}
+
+	var notFoundNames []string
+	for _, name := range names {
+		if !slices.ContainsFunc(hosts, func(host Host) bool {
+			return host.Name == name
+		}) {
+			notFoundNames = append(notFoundNames, name)
+		}
+	}
+	if len(notFoundNames) > 0 {
+		return nil, fmt.Errorf("hosts not found: %s", strings.Join(notFoundNames, ", "))
+	}
 	return hosts, nil
 }
 
@@ -50,6 +65,18 @@ func (c *Client) GetHostsByHostIDs(ctx context.Context,
 	var hosts []Host
 	if err := c.Client.Call(ctx, "host.get", params, &hosts); err != nil {
 		return nil, err
+	}
+
+	var notFoundHostIDs []string
+	for _, hostID := range hostIDs {
+		if !slices.ContainsFunc(hosts, func(host Host) bool {
+			return host.HostID == hostID
+		}) {
+			notFoundHostIDs = append(notFoundHostIDs, hostID)
+		}
+	}
+	if len(notFoundHostIDs) > 0 {
+		return nil, fmt.Errorf("host IDs not found: %s", strings.Join(notFoundHostIDs, ", "))
 	}
 	return hosts, nil
 }

@@ -373,11 +373,7 @@ func createMaintenanceAction(cCtx *cli.Context) error {
 	outlog.Printf("INFO created maintenance, url: %s", u.String())
 
 	if cCtx.Bool("wait") {
-		hosts, err := getHostsInMaintenance(cCtx, client, maintenance)
-		if err != nil {
-			return err
-		}
-		if err := waitForHostsMaintenanceInEffect(cCtx, client, hosts); err != nil {
+		if err := waitForMaintenanceInEffect(cCtx, client, maintenance.MaintenaceID); err != nil {
 			return err
 		}
 	}
@@ -467,11 +463,7 @@ func updateMaintenanceAction(cCtx *cli.Context) error {
 	outlog.Printf("INFO updated maintenance, url: %s", u.String())
 
 	if cCtx.Bool("wait") {
-		hosts, err := getHostsInMaintenance(cCtx, client, maintenance)
-		if err != nil {
-			return err
-		}
-		if err := waitForHostsMaintenanceInEffect(cCtx, client, hosts); err != nil {
+		if err := waitForMaintenanceInEffect(cCtx, client, maintenance.MaintenaceID); err != nil {
 			return err
 		}
 	}
@@ -571,11 +563,48 @@ func showStatusAction(cCtx *cli.Context) error {
 	}
 
 	if cCtx.Bool("wait") {
-		if err := waitForHostsMaintenanceInEffect(cCtx, client, hosts); err != nil {
+		if err := waitForMaintenanceInEffect(cCtx, client, maintenance.MaintenaceID); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func waitForMaintenanceInEffect(cCtx *cli.Context, client *myClient, maintenanceID string) error {
+	interval := cCtx.Duration("interval")
+	var timer *time.Timer
+	for {
+		maintenance, err := client.GetMaintenanceByID(cCtx.Context, maintenanceID)
+		if err != nil {
+			return err
+		}
+
+		hosts, err := getHostsInMaintenance(cCtx, client, maintenance)
+		if err != nil {
+			return err
+		}
+
+		if Hosts(hosts).allMaintenanceStatusExpected(MaintenanceStatusInEffect) {
+			outlog.Printf("INFO all hosts in specified maintenance become in effect status")
+			if err := logHosts(hosts); err != nil {
+				return err
+			}
+			return nil
+		}
+
+		if timer == nil {
+			timer = time.NewTimer(interval)
+			defer timer.Stop()
+		} else {
+			timer.Reset(interval)
+		}
+		outlog.Print("waiting for maintenance statuses change in all hosts...")
+		select {
+		case <-cCtx.Context.Done():
+			return nil
+		case <-timer.C:
+		}
+	}
 }
 
 func getHostsInMaintenance(cCtx *cli.Context, client *myClient, maintenance *Maintenance) ([]Host, error) {
@@ -603,45 +632,6 @@ func logHosts(hosts []Host) error {
 	}
 	outlog.Printf("INFO hosts=%s", string(hostsBytes))
 	return nil
-}
-
-func waitForHostsMaintenanceInEffect(cCtx *cli.Context, client *myClient, hosts []Host) error {
-	var hostIDs []string
-	interval := cCtx.Duration("interval")
-	var timer *time.Timer
-	for {
-		if Hosts(hosts).allMaintenanceStatusExpected(MaintenanceStatusInEffect) {
-			outlog.Printf("INFO all hosts in specified maintenance become in effect status")
-			if err := logHosts(hosts); err != nil {
-				return err
-			}
-			return nil
-		}
-
-		if timer == nil {
-			timer = time.NewTimer(interval)
-			defer timer.Stop()
-		} else {
-			timer.Reset(interval)
-		}
-		outlog.Print("waiting for maintenance statuses change in all hosts...")
-		select {
-		case <-cCtx.Context.Done():
-			return nil
-		case <-timer.C:
-		}
-
-		if hostIDs == nil {
-			hostIDs = slicex.Map(hosts, func(h Host) string {
-				return h.HostID
-			})
-		}
-		var err error
-		hosts, err = client.GetHostsByHostIDs(cCtx.Context, hostIDs)
-		if err != nil {
-			return err
-		}
-	}
 }
 
 func newClient(cCtx *cli.Context) (*myClient, error) {

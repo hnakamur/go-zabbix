@@ -12,3 +12,8 @@ func (c *myClient) GetHostGroupsByNamesFullMatch(ctx context.Context,
 	names []string) ([]HostGroup, error) {
 	return c.inner.GetHostGroupsByNamesFullMatch(ctx, names)
 }
+
+func (c *myClient) GetNestedHostGroupsByAncestorNames(ctx context.Context,
+	names []string) ([]HostGroup, error) {
+	return c.inner.GetNestedHostGroupsByAncestorNames(ctx, names)
+}

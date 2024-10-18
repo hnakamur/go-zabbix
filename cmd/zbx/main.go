@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"golang.org/x/exp/slices"
@@ -68,6 +69,10 @@ func run(args []string) error {
 				Name:  "debug",
 				Usage: "print JSON-RPC requests and responses",
 			},
+			&cli.BoolFlag{
+				Name:  "dry-run",
+				Usage: "skip calling APIs to update, delete, or modify",
+			},
 			&cli.GenericFlag{
 				Name:    "log-flags",
 				Value:   &logFlagsValue{flags: log.LstdFlags},
@@ -94,6 +99,10 @@ func run(args []string) error {
 								Name:    "desc",
 								Aliases: []string{"d"},
 								Usage:   "description of maintenance",
+							},
+							&cli.BoolFlag{
+								Name:  "include-nested",
+								Usage: "include hosts in nested host group whose names start with name + \"/\"  of groups specified by -group flag",
 							},
 							&cli.StringSliceFlag{
 								Name:    "group",
@@ -169,6 +178,10 @@ func run(args []string) error {
 								Name:    "desc",
 								Aliases: []string{"d"},
 								Usage:   "description of maintenance",
+							},
+							&cli.BoolFlag{
+								Name:  "include-nested",
+								Usage: "include hosts in nested host group whose names start with name + \"/\"  of groups specified by -group flag",
 							},
 							&cli.StringSliceFlag{
 								Name:    "group",
@@ -318,9 +331,23 @@ func createMaintenanceAction(cCtx *cli.Context) error {
 
 	groupsJustID := []HostGroup{}
 	if len(groupNames) > 0 {
-		groups, err := client.GetHostGroupsByNamesFullMatch(cCtx.Context, groupNames)
-		if err != nil {
-			return err
+		var groups []HostGroup
+		if cCtx.Bool("include-nested") {
+			groups, err = client.GetNestedHostGroupsByAncestorNames(cCtx.Context, groupNames)
+			if err != nil {
+				return err
+			}
+			if cCtx.Bool("debug") {
+				groupNames := slicex.Map(groups, func(g HostGroup) string {
+					return g.Name
+				})
+				log.Printf("DEBUG expaneded groups=%s", groupNames)
+			}
+		} else {
+			groups, err = client.GetHostGroupsByNamesFullMatch(cCtx.Context, groupNames)
+			if err != nil {
+				return err
+			}
 		}
 		groupsJustID = slicex.Map(groups, func(g HostGroup) HostGroup {
 			return HostGroup{GroupID: g.GroupID}
@@ -361,6 +388,11 @@ func createMaintenanceAction(cCtx *cli.Context) error {
 				StartDate:      *startDate,
 			},
 		},
+	}
+
+	if cCtx.Bool("dry-run") {
+		outlog.Printf("INFO skip creating maintenance due to dry run, name: %s", cCtx.String("name"))
+		return nil
 	}
 	if err := client.CreateMaintenance(cCtx.Context, maintenance); err != nil {
 		return err
@@ -416,9 +448,23 @@ func updateMaintenanceAction(cCtx *cli.Context) error {
 		if len(groupNames) == 1 && groupNames[0] == "" {
 			maintenance.Groups = []HostGroup{}
 		} else {
-			groups, err := client.GetHostGroupsByNamesFullMatch(cCtx.Context, groupNames)
-			if err != nil {
-				return err
+			var groups []HostGroup
+			if cCtx.Bool("include-nested") {
+				groups, err = client.GetNestedHostGroupsByAncestorNames(cCtx.Context, groupNames)
+				if err != nil {
+					return err
+				}
+				if cCtx.Bool("debug") {
+					groupNames := slicex.Map(groups, func(g HostGroup) string {
+						return g.Name
+					})
+					log.Printf("DEBUG expaneded groups=%s", groupNames)
+				}
+			} else {
+				groups, err = client.GetHostGroupsByNamesFullMatch(cCtx.Context, groupNames)
+				if err != nil {
+					return err
+				}
 			}
 			maintenance.Groups = slicex.Map(groups, func(g HostGroup) HostGroup {
 				return HostGroup{GroupID: g.GroupID}
@@ -452,6 +498,10 @@ func updateMaintenanceAction(cCtx *cli.Context) error {
 		maintenance.TimePeriods[0].Period = d
 	}
 
+	if cCtx.Bool("dry-run") {
+		outlog.Printf("INFO skip updating maintenance due to dry run, name: %s, id: %s", maintenance.Name, maintenance.MaintenaceID)
+		return nil
+	}
 	if err := client.UpdateMaintenance(cCtx.Context, maintenance); err != nil {
 		return err
 	}
@@ -529,6 +579,21 @@ func deleteMaintenanceAction(cCtx *cli.Context) error {
 		}
 	}
 	targetIDs := slicex.ConcatDeDup(idsByIDs, idsByNames)
+
+	if cCtx.Bool("dry-run") {
+		var b strings.Builder
+		if len(ids) > 0 {
+			fmt.Fprintf(&b, "ids: %s", strings.Join(ids, ", "))
+		}
+		if len(names) > 0 {
+			if b.Len() > 0 {
+				b.WriteString(", ")
+			}
+			fmt.Fprintf(&b, "names: %s", strings.Join(names, ", "))
+		}
+		outlog.Printf("INFO skip deleting maintenance due to dry run, %s", b.String())
+		return nil
+	}
 	deletedIDs, err := client.DeleteMaintenancesByIDs(cCtx.Context, targetIDs)
 	if err != nil {
 		return err

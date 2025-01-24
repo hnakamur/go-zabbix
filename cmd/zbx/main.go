@@ -275,6 +275,93 @@ func run(args []string) error {
 					},
 				},
 			},
+			{
+				Name:  "trigger",
+				Usage: "disable, enable, or list griggers",
+				Subcommands: []*cli.Command{
+					{
+						Name:  "disable",
+						Usage: "disable triggers",
+						Flags: []cli.Flag{
+							&cli.StringSliceFlag{
+								Name:    "group",
+								Aliases: []string{"g"},
+								Usage:   "host group names",
+							},
+							&cli.StringSliceFlag{
+								Name:    "host",
+								Aliases: []string{"H"},
+								Usage:   "host names",
+							},
+							&cli.StringSliceFlag{
+								Name:    "id",
+								Aliases: []string{"I"},
+								Usage:   "trigger IDs",
+							},
+							&cli.StringSliceFlag{
+								Name:    "description",
+								Aliases: []string{"D"},
+								Usage:   "trigger descriptions (names)",
+							},
+						},
+						Action: disableTriggersAction,
+					},
+					{
+						Name:  "enable",
+						Usage: "enable triggers",
+						Flags: []cli.Flag{
+							&cli.StringSliceFlag{
+								Name:    "group",
+								Aliases: []string{"g"},
+								Usage:   "host group names",
+							},
+							&cli.StringSliceFlag{
+								Name:    "host",
+								Aliases: []string{"H"},
+								Usage:   "host names",
+							},
+							&cli.StringSliceFlag{
+								Name:    "id",
+								Aliases: []string{"I"},
+								Usage:   "trigger IDs",
+							},
+							&cli.StringSliceFlag{
+								Name:    "description",
+								Aliases: []string{"D"},
+								Usage:   "trigger descriptions (names)",
+							},
+						},
+						Action: enableTriggersAction,
+					},
+					{
+						Name:  "get",
+						Usage: "get triggers",
+						Flags: []cli.Flag{
+							&cli.StringSliceFlag{
+								Name:    "group",
+								Aliases: []string{"g"},
+								Usage:   "host group names",
+							},
+							&cli.StringSliceFlag{
+								Name:    "host",
+								Aliases: []string{"H"},
+								Usage:   "host names",
+							},
+							&cli.StringSliceFlag{
+								Name:    "id",
+								Aliases: []string{"I"},
+								Usage:   "trigger IDs",
+							},
+							&cli.StringSliceFlag{
+								Name:    "description",
+								Aliases: []string{"D"},
+								Usage:   "trigger descriptions (names)",
+							},
+						},
+						Action: getTriggersAction,
+					},
+				},
+			},
 		},
 		Before: func(cCtx *cli.Context) error {
 			logFlags := cCtx.Generic("log-flags").(*logFlagsValue).flags
@@ -747,6 +834,116 @@ func getTargetMaintenance(cCtx *cli.Context, client *myClient) (*Maintenance, er
 		return nil, err
 	}
 	return maintenance, nil
+}
+
+func disableTriggersAction(cCtx *cli.Context) error {
+	triggerIDs := cCtx.StringSlice("id")
+	hostNames := cCtx.StringSlice("host")
+	groupNames := cCtx.StringSlice("group")
+	if len(triggerIDs) == 0 && len(hostNames) == 0 && len(groupNames) == 0 {
+		return errors.New(`at least one of "--id", "--host", or "--hostgroup" must be set`)
+	}
+
+	descriptions := cCtx.StringSlice("description")
+
+	client, err := newClient(cCtx)
+	if err != nil {
+		return err
+	}
+
+	triggerIDs, err = client.GetTriggerIDs(cCtx.Context, triggerIDs, hostNames, groupNames, descriptions)
+	if err != nil {
+		return err
+	}
+
+	if len(triggerIDs) == 0 {
+		return errors.New("no trigger matched")
+	}
+
+	ids, err := client.SetTriggersStatus(cCtx.Context, triggerIDs, rpc.TriggerStatusDisabled)
+	// Print updated trigger IDs before returning the error
+	// since some triggers may be updated.
+	enc := json.NewEncoder(os.Stdout)
+	if err := enc.Encode(ids); err != nil {
+		return err
+	}
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func enableTriggersAction(cCtx *cli.Context) error {
+	triggerIDs := cCtx.StringSlice("id")
+	hostNames := cCtx.StringSlice("host")
+	groupNames := cCtx.StringSlice("group")
+	if len(triggerIDs) == 0 && len(hostNames) == 0 && len(groupNames) == 0 {
+		return errors.New(`at least one of "--id", "--host", or "--hostgroup" must be set`)
+	}
+
+	descriptions := cCtx.StringSlice("description")
+
+	client, err := newClient(cCtx)
+	if err != nil {
+		return err
+	}
+
+	triggerIDs, err = client.GetTriggerIDs(cCtx.Context, triggerIDs, hostNames, groupNames, descriptions)
+	if err != nil {
+		return err
+	}
+
+	if len(triggerIDs) == 0 {
+		return errors.New("no trigger matched")
+	}
+
+	ids, err := client.SetTriggersStatus(cCtx.Context, triggerIDs, rpc.TriggerStatusEnabled)
+	// Print updated trigger IDs before returning the error
+	// since some triggers may be updated.
+	enc := json.NewEncoder(os.Stdout)
+	if err := enc.Encode(ids); err != nil {
+		return err
+	}
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func getTriggersAction(cCtx *cli.Context) error {
+	triggerIDs := cCtx.StringSlice("id")
+	hostNames := cCtx.StringSlice("host")
+	groupNames := cCtx.StringSlice("group")
+	if len(triggerIDs) == 0 && len(hostNames) == 0 && len(groupNames) == 0 {
+		return errors.New(`at least one of "--id", "--host", or "--hostgroup" must be set`)
+	}
+
+	descriptions := cCtx.StringSlice("description")
+
+	client, err := newClient(cCtx)
+	if err != nil {
+		return err
+	}
+
+	triggers, err := client.GetTriggers(cCtx.Context, triggerIDs, hostNames, groupNames, descriptions)
+	if err != nil {
+		return err
+	}
+	slices.SortFunc(triggers, func(a, b Trigger) bool {
+		return a.TriggerID < b.TriggerID
+	})
+
+	displayTriggers := make([]displayTrigger, len(triggers))
+	for i, t := range triggers {
+		displayTriggers[i] = toDisplayTrigger(t)
+	}
+	enc := json.NewEncoder(os.Stdout)
+	if err := enc.Encode(displayTriggers); err != nil {
+		return err
+	}
+	return nil
 }
 
 func login(cCtx *cli.Context, c *myClient) error {

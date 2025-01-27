@@ -38,7 +38,7 @@ func (c *myClient) GetTriggers(ctx context.Context, triggerIDs, hostNames, group
 		})
 	}
 	if len(groupNames) > 0 {
-		groups, err := c.inner.GetHostGroupsByNamesFullMatch(ctx, groupNames)
+		groups, err := c.inner.GetNestedHostGroupsByAncestorNames(ctx, groupNames)
 		if err != nil {
 			return nil, err
 		}
@@ -79,7 +79,7 @@ func (c *myClient) GetTriggerIDs(ctx context.Context, triggerIDs, hostNames, gro
 		})
 	}
 	if len(groupNames) > 0 {
-		groups, err := c.inner.GetHostGroupsByNamesFullMatch(ctx, groupNames)
+		groups, err := c.inner.GetNestedHostGroupsByAncestorNames(ctx, groupNames)
 		if err != nil {
 			return nil, err
 		}

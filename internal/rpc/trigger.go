@@ -26,24 +26,26 @@ type Trigger struct {
 }
 
 func (c *Client) GetTriggers(ctx context.Context, triggerIDs, hostIDs, groupIDs, itemIDs, descriptions []string) ([]Trigger, error) {
-	var filter any
+	type descriptionsFilter struct {
+		Descriptions []string `json:"description"`
+	}
+
+	var filter *descriptionsFilter
 	if len(descriptions) > 0 {
-		filter = struct {
-			Descriptions []string `json:"description"`
-		}{
+		filter = &descriptionsFilter{
 			Descriptions: descriptions,
 		}
 	}
 	params := struct {
-		TriggerIDs   []string `json:"triggerids,omitempty"`
-		Output       any      `json:"output"`
-		Filter       any      `json:"filter,omitempty"`
-		HostIDs      any      `json:"hostids,omitempty"`
-		GroupIDs     any      `json:"gorupids,omitempty"`
-		ItemIDs      any      `json:"itemids,omitempty"`
-		SelectGroups any      `json:"selectGroups"`
-		SelectHosts  any      `json:"selectHosts"`
-		SelectItems  any      `json:"selectItems"`
+		TriggerIDs   []string            `json:"triggerids,omitempty"`
+		Output       string              `json:"output"`
+		Filter       *descriptionsFilter `json:"filter,omitempty"`
+		HostIDs      []string            `json:"hostids,omitempty"`
+		GroupIDs     []string            `json:"groupids,omitempty"`
+		ItemIDs      []string            `json:"itemids,omitempty"`
+		SelectGroups []string            `json:"selectGroups"`
+		SelectHosts  []string            `json:"selectHosts"`
+		SelectItems  []string            `json:"selectItems"`
 	}{
 		TriggerIDs:   triggerIDs,
 		Output:       "extend",

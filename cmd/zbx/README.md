@@ -24,3 +24,15 @@ An executable file for Linux amd64 can be downloaded from [releases](https://git
 ```
 go install -trimpath -tags netgo github.com/hnakamur/go-zabbix/cmd/zbx@latest
 ```
+
+### Usage
+
+1. Set necessary environment variables
+   ```
+   export ZBX_URL='http://zabbix.example.jp/zabbix'
+   export ZBX_API_TOKEN='api_token_generated_by_zabbix'
+   ```
+1. Learn a little about how to use
+   ```
+   zbx help
+   ```

@@ -1,0 +1,43 @@
+[tasks.build]
+description = 'build artifacts for linux/amd64 and darwin/arm64'
+depends = ["build-linux", "build-darwin"]
+
+[tasks.build-linux]
+description = 'build artifact for linux/amd64'
+run = '''
+GOOS=linux GOARCH=amd64 go build -C cmd/zbx -trimpath -tags netgo
+tar zcf zbx.linux_amd64.tar.gz -C cmd/zbx zbx
+'''
+
+[tasks.build-darwin]
+description = 'build artifact for darwin/arm64'
+run = '''
+GOOS=darwin GOARCH=arm64 go build -C cmd/zbx -trimpath -tags netgo
+tar zcf zbx.darwin_arm64.tar.gz -C cmd/zbx zbx
+'''
+
+[tasks.clean]
+description = 'clean artifacts'
+run = '''
+rm -f cmd/zbx/zbx *.tar.gz
+'''
+
+[tasks.release]
+description = 'build and release artifacts'
+usage = '''
+arg "<version>" help="version like vX.Y.Z"
+'''
+run = '''
+git tag ${usage_version}
+
+rm -f cmd/zbx/zbx *.tar.gz
+GOOS=linux GOARCH=amd64 go build -C cmd/zbx -trimpath -tags netgo
+tar zcf /tmp/zbx.linux_amd64.tar.gz -C cmd/zbx zbx
+
+rm -f cmd/zbx/zbx *.tar.gz
+GOOS=darwin GOARCH=arm64 go build -C cmd/zbx -trimpath -tags netgo
+tar zcf /tmp/zbx.darwin_arm64.tar.gz -C cmd/zbx zbx
+
+git push origin ${usage_version}
+gh release create -d -n '' -t ${usage_version} ${usage_version} /tmp/zbx.linux_amd64.tar.gz /tmp/zbx.darwin_arm64.tar.gz
+'''

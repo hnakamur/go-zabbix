@@ -8,7 +8,7 @@ This library is in very early stage of development. The API is not frozen yet.
 
 ## Install
 
-You can download a static-linked executable for Linux from
+You can download a static-linked executable for Linux/amd64 and Darwin/arm64 from
 https://github.com/hnakamur/go-zabbix/releases.
 
 Or you can install from the source with the following command:

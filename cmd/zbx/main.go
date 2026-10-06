@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net/url"
 	"os"
+	"os/exec"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -59,6 +61,11 @@ func run(args []string) error {
 				Aliases: []string{"p"},
 				Usage:   "login password (shows prompt if both of this and token are empty)",
 				EnvVars: []string{"ZBX_PASSWORD"},
+			},
+			&cli.StringFlag{
+				Name:    "token-file",
+				Usage:   "path to script which prints Zabbix API token",
+				EnvVars: []string{"ZBX_API_TOKEN_FILE"},
 			},
 			&cli.StringFlag{
 				Name:    "token",
@@ -786,6 +793,15 @@ func logHosts(hosts []Host) error {
 	return nil
 }
 
+func getTokenFromFile(scriptFilename string) (string, error) {
+	cmd := exec.Command(scriptFilename)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(bytes.TrimRight(output, "\r\n")), nil
+}
+
 func newClient(cCtx *cli.Context) (*myClient, error) {
 	zabbixURL := cCtx.String("url")
 	hostHeader := cCtx.String("virtual-host")
@@ -795,7 +811,17 @@ func newClient(cCtx *cli.Context) (*myClient, error) {
 		opts = append(opts, zabbix.WithHost(hostHeader))
 	}
 
-	token := cCtx.String("token")
+	var token string
+	if tokenFile := cCtx.String("token-file"); tokenFile != "" {
+		var err error
+		token, err = getTokenFromFile(tokenFile)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if token == "" {
+		token = cCtx.String("token")
+	}
 	if token != "" {
 		opts = append(opts, zabbix.WithAPIToken(token))
 	}

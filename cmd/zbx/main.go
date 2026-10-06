@@ -795,6 +795,8 @@ func logHosts(hosts []Host) error {
 
 func getTokenFromFile(scriptFilename string) (string, error) {
 	cmd := exec.Command(scriptFilename)
+	cmd.Stdin = os.Stdin
+	cmd.Stderr = os.Stderr
 	output, err := cmd.Output()
 	if err != nil {
 		return "", err
